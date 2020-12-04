@@ -1,29 +1,49 @@
-use cursive::direction::Direction;
-use cursive::event::{Event, EventResult, MouseButton, MouseEvent};
+//use cursive::direction::Direction;
+//use cursive::event::{Event, EventResult, MouseButton, MouseEvent};
 use cursive::theme::{BaseColor, Color, ColorStyle};
-use cursive::views::{Button, Dialog, LinearLayout, Panel, SelectView};
+use cursive::views::{/*Button,*/ Dialog, LinearLayout, Panel /*SelectView*/};
 use cursive::Cursive;
 use cursive::Printer;
 use cursive::Vec2;
 
+use std::sync::atomic;
 use std::thread;
 use std::time;
 
 use crate::game::*;
 
-pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Duration) {
+static CANCELED: atomic::AtomicBool = atomic::AtomicBool::new(false);
+
+pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Duration) -> bool {
+    CANCELED.store(false, atomic::Ordering::Relaxed);
     siv.add_layer(
         Dialog::new()
             .title("ChaiChess")
             .content(LinearLayout::horizontal().child(Panel::new(BoardView { board }))),
     );
+    siv.set_global_callback(cursive::event::Event::Char('q'), |_| {
+        CANCELED.store(true, atomic::Ordering::Relaxed)
+    });
     siv.refresh();
-    thread::sleep(duration);
+    let mut passed = time::Duration::new(0, 0);
+    while passed < duration {
+        thread::sleep(crate::ms(50));
+        passed += crate::ms(50);
+        loop {
+            if siv.step() == false {
+                break;
+            }
+        }
+        if CANCELED.load(atomic::Ordering::Relaxed) == true {
+            return true;
+        }
+    }
+    false
 }
 
-pub fn show_board(board: BoardState, duration: time::Duration) {
+pub fn show_board(board: BoardState, duration: time::Duration) -> bool {
     let mut siv = cursive::default();
-    reshow_board(&mut siv, board, duration);
+    reshow_board(&mut siv, board, duration)
 }
 
 struct BoardView {
