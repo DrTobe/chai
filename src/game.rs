@@ -107,7 +107,7 @@ pub fn get_steps(pos: usize, direction: Direction, steps: usize) -> Vec<usize> {
     let col = (pos % 8) as isize;
     let mut positions = Vec::with_capacity(7);
     let steps = steps as isize;
-    for step in 0..=steps {
+    for step in 1..=steps {
         let (new_row, new_col) = match direction {
             Direction::RI => (row + step, col),
             Direction::RICI => (row + step, col + step),
@@ -118,8 +118,8 @@ pub fn get_steps(pos: usize, direction: Direction, steps: usize) -> Vec<usize> {
             Direction::CD => (row, col - step),
             Direction::RICD => (row + step, col - step),
         };
-        if let Some(pos) = pos_from_rowcol(new_row, new_col) {
-            positions.push(pos);
+        if let Some(new_pos) = pos_from_rowcol(new_row, new_col) {
+            positions.push(new_pos);
         }
     }
     positions
