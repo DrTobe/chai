@@ -67,6 +67,7 @@ impl cursive::view::View for BoardView {
                     (PieceType::Rook, Player::Black) => " ♜ ",
                     (PieceType::Bishop, Player::Black) => " ♝ ",
                     (PieceType::Knight, Player::Black) => " ♞ ",
+                    (PieceType::InitPawn, Player::Black) => " ♟ ",
                     (PieceType::Pawn, Player::Black) => " ♟ ",
                     (PieceType::InitKing, Player::White) => " ♔ ",
                     (PieceType::King, Player::White) => " ♔ ",
@@ -75,6 +76,7 @@ impl cursive::view::View for BoardView {
                     (PieceType::Rook, Player::White) => " ♖ ",
                     (PieceType::Bishop, Player::White) => " ♗ ",
                     (PieceType::Knight, Player::White) => " ♘ ",
+                    (PieceType::InitPawn, Player::White) => " ♙ ",
                     (PieceType::Pawn, Player::White) => " ♙ ",
                 }
             } else {

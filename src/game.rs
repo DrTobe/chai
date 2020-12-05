@@ -7,6 +7,7 @@ pub enum PieceType {
     Rook,
     Bishop,
     Knight,
+    InitPawn,
     Pawn,
 }
 
@@ -71,28 +72,36 @@ impl BoardState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Direction {
-    RI,   // row increase
-    RICI, // row inc, col inc
-    CI,
-    RDCI,
-    RD,
-    RDCD,
-    CD,
-    RICD,
-}
+type Direction = (isize, isize);
 
-const STRAIGHT_AND_DIAGONAL: [Direction; 8] = [
-    Direction::RI,
-    Direction::CI,
-    Direction::RD,
-    Direction::CD,
-    Direction::RICI,
-    Direction::RDCI,
-    Direction::RDCD,
-    Direction::RICD,
+const DIRECTIONS: [Direction; 16] = [
+    (1, 0),
+    (-1, 0),
+    (0, 1),
+    (0, -1),
+    (1, 1),
+    (1, -1),
+    (-1, 1),
+    (-1, -1),
+    (2, 1),
+    (1, 2),
+    (-1, 2),
+    (-2, 1),
+    (-2, -1),
+    (-1, -2),
+    (1, -2),
+    (2, -1),
 ];
+
+use std::ops;
+const WHITE_PAWN_MOVE: ops::Range<usize> = 0..1;
+const BLACK_PAWN_MOVE: ops::Range<usize> = 1..2;
+const WHITE_PAWN_CAPTURE: ops::Range<usize> = 4..6;
+const BLACK_PAWN_CAPTURE: ops::Range<usize> = 6..8;
+const STRAIGHT: ops::Range<usize> = 0..4;
+const DIAGONAL: ops::Range<usize> = 4..8;
+const STRAIGHT_AND_DIAGONAL: ops::Range<usize> = 0..8;
+const KNIGHT: ops::Range<usize> = 8..16;
 
 pub fn pos_from_rowcol(row: isize, col: isize) -> Option<usize> {
     if row >= 0 && row < 8 && col >= 0 && col < 8 {
@@ -108,16 +117,7 @@ pub fn get_steps(pos: usize, direction: Direction, steps: usize) -> Vec<usize> {
     let mut positions = Vec::with_capacity(7);
     let steps = steps as isize;
     for step in 1..=steps {
-        let (new_row, new_col) = match direction {
-            Direction::RI => (row + step, col),
-            Direction::RICI => (row + step, col + step),
-            Direction::CI => (row, col + step),
-            Direction::RDCI => (row - step, col + step),
-            Direction::RD => (row - step, col),
-            Direction::RDCD => (row - step, col - step),
-            Direction::CD => (row, col - step),
-            Direction::RICD => (row + step, col - step),
-        };
+        let (new_row, new_col) = (row + direction.0 * step, col + direction.1 * step);
         if let Some(new_pos) = pos_from_rowcol(new_row, new_col) {
             positions.push(new_pos);
         }
@@ -125,35 +125,6 @@ pub fn get_steps(pos: usize, direction: Direction, steps: usize) -> Vec<usize> {
     positions
 }
 
-// far = pieces which can move far distances ... plus king because it behaves
-// the same :)
-pub fn get_far_moves(
-    board: &BoardState,
-    pos: usize,
-    directions: &[Direction],
-    max_steps: usize,
-    player: Player,
-) -> Vec<usize> {
-    let mut positions = Vec::with_capacity(28); // queen: 4 dirs, 7 steps
-    for direction in directions {
-        for new_pos in get_steps(pos, *direction, max_steps) {
-            match board.fields[new_pos] {
-                None => {
-                    positions.push(new_pos);
-                }
-                Some((_, curr_player)) => {
-                    if curr_player == player {
-                        break;
-                    } else {
-                        positions.push(new_pos);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    positions
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GameState {
@@ -178,172 +149,202 @@ impl GameState {
         new_state
     }
 
+    // far = pieces which can move far distances ... plus king because it behaves
+    // the same :)
+    pub fn get_far_moves(
+        &self,
+        pos: usize,
+        directions: &[Direction],
+        max_steps: usize,
+        move_to_empty: bool,
+        move_to_capture: bool,
+    ) -> Vec<usize> {
+        let mut positions = Vec::with_capacity(28); // queen: 4 dirs, 7 steps
+        for direction in directions {
+            for new_pos in get_steps(pos, *direction, max_steps) {
+                match self.board.fields[new_pos] {
+                    None => {
+                        if move_to_empty {
+                            positions.push(new_pos);
+                        }
+                    }
+                    Some((_, player)) => {
+                        if move_to_capture && player != self.turn() {
+                            positions.push(new_pos);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        positions
+    }
+
+    fn store_en_passant_info(&self, state: &mut GameState, pos: usize, new_pos: usize) {
+        // Handling en passant movements. Here: remember that
+        // a double step occured.
+        state.board.en_passant_field =
+            EnPassantFieldInfo {
+                ply: self.ply,
+                skipped: (pos + new_pos) / 2,
+                target: new_pos,
+            }
+    }
+
+    fn generate_pawn_promotions(&self, state: GameState, new_pos: usize) -> [GameState; 4] {
+        let mut states = [state; 4];
+        states[0].board.fields[new_pos] = Some((PieceType::Queen, self.turn()));
+        states[1].board.fields[new_pos] = Some((PieceType::Rook, self.turn()));
+        states[2].board.fields[new_pos] = Some((PieceType::Bishop, self.turn()));
+        states[3].board.fields[new_pos] = Some((PieceType::Knight, self.turn()));
+        states
+    }
+
     pub fn get_pseudo_legal_moves(&self) -> Vec<GameState> {
         let mut new_states = Vec::new();
         // "Default" movement (all but pawns): Move if
         for (piece, pos) in self.board.get_pieces_with_pos(self.turn()) {
             match piece {
                 PieceType::InitKing | PieceType::King => {
-                    for new_pos in
-                        get_far_moves(&self.board, pos, &STRAIGHT_AND_DIAGONAL[..], 1, self.turn())
-                    {
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        &DIRECTIONS[STRAIGHT_AND_DIAGONAL],
+                        1,
+                        true,
+                        true,
+                    ) {
                         new_states.push(self.new_state_from_to(PieceType::King, pos, new_pos));
                     }
                     // TODO castlings!
                 }
                 PieceType::Queen => {
-                    for new_pos in
-                        get_far_moves(&self.board, pos, &STRAIGHT_AND_DIAGONAL[..], 7, self.turn())
-                    {
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        &DIRECTIONS[STRAIGHT_AND_DIAGONAL],
+                        7,
+                        true,
+                        true,
+                    ) {
                         new_states.push(self.new_state_from_to(PieceType::Queen, pos, new_pos));
                     }
                 }
                 PieceType::InitRook | PieceType::Rook => {
-                    for new_pos in get_far_moves(
-                        &self.board,
+                    for new_pos in self.get_far_moves(
                         pos,
-                        &STRAIGHT_AND_DIAGONAL[0..4],
+                        &DIRECTIONS[STRAIGHT],
                         7,
-                        self.turn(),
+                        true,
+                        true,
                     ) {
                         new_states.push(self.new_state_from_to(PieceType::Rook, pos, new_pos));
                     }
                 }
                 PieceType::Bishop => {
-                    for new_pos in get_far_moves(
-                        &self.board,
+                    for new_pos in self.get_far_moves(
                         pos,
-                        &STRAIGHT_AND_DIAGONAL[4..8],
+                        &DIRECTIONS[DIAGONAL],
                         7,
-                        self.turn(),
+                        true,
+                        true,
                     ) {
                         new_states.push(self.new_state_from_to(PieceType::Bishop, pos, new_pos));
                     }
                 }
                 PieceType::Knight => {
-                    let row = (pos / 8) as isize;
-                    let col = (pos % 8) as isize;
-                    for (i, j) in &[
-                        (1, 2),
-                        (2, 1),
-                        (-1, 2),
-                        (-2, 1),
-                        (1, -2),
-                        (2, -1),
-                        (-1, -2),
-                        (-2, -1),
-                    ] {
-                        let (new_row, new_col) = (row + i, col + j);
-                        if let Some(new_pos) = pos_from_rowcol(new_row, new_col) {
-                            match self.board.fields[new_pos] {
-                                None => {
-                                    new_states.push(self.new_state_from_to(
-                                        PieceType::Knight,
-                                        pos,
-                                        new_pos,
-                                    ));
-                                }
-                                Some((_, curr_player)) if curr_player != self.turn() => {
-                                    new_states.push(self.new_state_from_to(
-                                        PieceType::Knight,
-                                        pos,
-                                        new_pos,
-                                    ));
-                                }
-                                _ => {}
-                            }
-                        }
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        &DIRECTIONS[KNIGHT],
+                        1,
+                        true,
+                        true,
+                    ) {
+                        new_states.push(self.new_state_from_to(PieceType::Knight, pos, new_pos));
                     }
                 }
+                PieceType::InitPawn => {
+                    let (move_moves, capture_moves) = match self.turn() {
+                        Player::White => (&DIRECTIONS[WHITE_PAWN_MOVE], &DIRECTIONS[WHITE_PAWN_CAPTURE]),
+                        Player::Black => (&DIRECTIONS[BLACK_PAWN_MOVE], &DIRECTIONS[BLACK_PAWN_CAPTURE]),
+                    };
+                    for (i, new_pos) in self.get_far_moves(
+                        pos,
+                        move_moves,
+                        2,
+                        true,
+                        false,
+                    ).iter().enumerate() {
+                        let mut new_state = self.new_state_from_to(piece, pos, *new_pos);
+                        if i == 1 {
+                            self.store_en_passant_info(&mut new_state, pos, *new_pos);
+                        }
+                        new_states.push(new_state);
+                    }
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        capture_moves,
+                        1,
+                        false,
+                        true,
+                    ) {
+                        new_states.push(self.new_state_from_to(piece, pos, new_pos));
+                    }
+                },
                 PieceType::Pawn => {
-                    let row = (pos / 8) as isize;
-                    let col = (pos % 8) as isize;
-                    let (all_moves, home_row, near_final_row) = match self.turn() {
-                        Player::White => (
-                            [(1, 1, true), (1, -1, true), (1, 0, false), (2, 0, false)],
+                    let (final_row, move_moves, capture_moves) = match self.turn() {
+                        Player::White => (7, &DIRECTIONS[WHITE_PAWN_MOVE], &DIRECTIONS[WHITE_PAWN_CAPTURE]),
+                        Player::Black => (0, &DIRECTIONS[BLACK_PAWN_MOVE], &DIRECTIONS[BLACK_PAWN_CAPTURE]),
+                    };
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        move_moves,
+                        1,
+                        true,
+                        false,
+                    ) {
+                        let new_state = self.new_state_from_to(piece, pos, new_pos);
+                        if pos / 8 == final_row {
+                            for promoted_state in self.generate_pawn_promotions(new_state, new_pos).iter() {
+                                new_states.push(*promoted_state);
+                            }
+                        } else {
+                            new_states.push(new_state);
+                        }
+                    }
+                    for new_pos in self.get_far_moves(
+                        pos,
+                        capture_moves,
+                        1,
+                        false,
+                        true,
+                    ) {
+                        let new_state = self.new_state_from_to(piece, pos, new_pos);
+                        if pos / 8 == final_row {
+                            for promoted_state in self.generate_pawn_promotions(new_state, new_pos).iter() {
+                                new_states.push(*promoted_state);
+                            }
+                        } else {
+                            new_states.push(new_state);
+                        }
+                    }
+                    if self.ply == self.board.en_passant_field.ply + 1 {
+                        for new_pos in self.get_far_moves(
+                            pos,
+                            capture_moves,
                             1,
-                            6,
-                        ),
-                        Player::Black => (
-                            [
-                                (-1, 1, true),
-                                (-1, -1, true),
-                                (-1, 0, false),
-                                (-2, 0, false),
-                            ],
-                            6,
-                            1,
-                        ),
-                    };
-                    let moves = if row == home_row {
-                        &all_moves[0..4]
-                    } else {
-                        &all_moves[0..3]
-                    };
-                    let pieces = if row == near_final_row {
-                        &[
-                            PieceType::Queen,
-                            PieceType::Rook,
-                            PieceType::Bishop,
-                            PieceType::Knight,
-                        ][..]
-                    } else {
-                        &[PieceType::Pawn][..]
-                    };
-                    for (i, j, capture) in moves {
-                        let (new_row, new_col) = (row + i, col + j);
-                        if let Some(new_pos) = pos_from_rowcol(new_row, new_col) {
-                            if !capture {
-                                match self.board.fields[new_pos] {
-                                    None => {
-                                        for piece in pieces {
-                                            let mut new_state =
-                                                self.new_state_from_to(*piece, pos, new_pos);
-                                            // Handling en passant movements. Here: remember that
-                                            // a double step occured.
-                                            if *i == 2 || *i == -2 {
-                                                new_state.board.en_passant_field =
-                                                    EnPassantFieldInfo {
-                                                        ply: self.ply,
-                                                        skipped: pos_from_rowcol(
-                                                            row + *i / 2,
-                                                            col + *j,
-                                                        )
-                                                        .unwrap(),
-                                                        target: new_pos,
-                                                    }
-                                            }
-                                            new_states.push(new_state);
-                                        }
-                                    }
-                                    _ => {
-                                        break;
-                                    }
-                                }
-                            } else {
-                                match self.board.fields[new_pos] {
-                                    Some((_, curr_player)) if curr_player != self.turn() => {
-                                        for piece in pieces {
-                                            new_states
-                                                .push(self.new_state_from_to(*piece, pos, new_pos));
-                                        }
-                                    }
-                                    // Handle en passant capture
-                                    None if self.ply == self.board.en_passant_field.ply + 1
-                                        && self.board.en_passant_field.skipped == new_pos =>
-                                    {
-                                        let mut new_state =
-                                            self.new_state_from_to(PieceType::Pawn, pos, new_pos);
-                                        new_state.board.fields
-                                            [self.board.en_passant_field.target] = None;
-                                        new_states.push(new_state);
-                                    }
-                                    _ => {}
-                                }
+                            true,
+                            false,
+                        ) {
+                            // No promotions while capturing en-passant possible
+                            if self.board.en_passant_field.skipped == new_pos {
+                                let mut new_state =
+                                self.new_state_from_to(piece, pos, new_pos);
+                                new_state.board.fields
+                                [self.board.en_passant_field.target] = None;
+                                new_states.push(new_state);
                             }
                         }
                     }
-                }
+                },
             }
         }
         new_states

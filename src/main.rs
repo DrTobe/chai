@@ -19,16 +19,18 @@ fn main() {
     loop {
         let new_state = match game
             .get_pseudo_legal_moves()
-            .choose(&mut rand::thread_rng()) {
-                Some(s) => *s,
-                None => break,
-            };
-        game = new_state;
-        if board_view::show_board(game.board, ms(100)) == true
-        //|| board_view::show_board(game.board, ms(500)) == true
+            .choose(&mut rand::thread_rng())
+        {
+            Some(s) => *s,
+            None => break,
+        };
+        if board_view::show_board(new_state.board, ms(100)) == true
+            || board_view::show_board(game.board, ms(100)) == true
+            || board_view::show_board(new_state.board, ms(100)) == true
         {
             break;
         }
+        game = new_state;
     }
 }
 
