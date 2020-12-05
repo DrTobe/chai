@@ -198,6 +198,21 @@ impl GameState {
         states
     }
 
+    fn get_pawn_moves(&self) -> (usize, &[Direction], &[Direction]) {
+        match self.turn() {
+            Player::White => (
+                7,
+                &DIRECTIONS[WHITE_PAWN_MOVE],
+                &DIRECTIONS[WHITE_PAWN_CAPTURE],
+            ),
+            Player::Black => (
+                0,
+                &DIRECTIONS[BLACK_PAWN_MOVE],
+                &DIRECTIONS[BLACK_PAWN_CAPTURE],
+            ),
+        }
+    }
+
     pub fn get_pseudo_legal_moves(&self) -> Vec<GameState> {
         let mut new_states = Vec::new();
         // "Default" movement (all but pawns): Move if
@@ -240,16 +255,7 @@ impl GameState {
                 }
             }
             PieceType::InitPawn => {
-                let (move_moves, capture_moves) = match self.turn() {
-                    Player::White => (
-                        &DIRECTIONS[WHITE_PAWN_MOVE],
-                        &DIRECTIONS[WHITE_PAWN_CAPTURE],
-                    ),
-                    Player::Black => (
-                        &DIRECTIONS[BLACK_PAWN_MOVE],
-                        &DIRECTIONS[BLACK_PAWN_CAPTURE],
-                    ),
-                };
+                let (_, move_moves, capture_moves) = self.get_pawn_moves();
                 for (i, new_pos) in self
                     .get_far_moves(pos, move_moves, 2, true, false)
                     .iter()
@@ -266,18 +272,7 @@ impl GameState {
                 }
             }
             PieceType::Pawn => {
-                let (final_row, move_moves, capture_moves) = match self.turn() {
-                    Player::White => (
-                        7,
-                        &DIRECTIONS[WHITE_PAWN_MOVE],
-                        &DIRECTIONS[WHITE_PAWN_CAPTURE],
-                    ),
-                    Player::Black => (
-                        0,
-                        &DIRECTIONS[BLACK_PAWN_MOVE],
-                        &DIRECTIONS[BLACK_PAWN_CAPTURE],
-                    ),
-                };
+                let (final_row, move_moves, capture_moves) = self.get_pawn_moves();
                 for new_pos in self.get_far_moves(pos, move_moves, 1, true, false) {
                     let new_state = self.new_state_from_to(piece, pos, new_pos);
                     if new_pos / 8 == final_row {
