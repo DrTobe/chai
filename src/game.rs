@@ -285,7 +285,7 @@ impl GameState {
                             PieceType::Queen,
                             PieceType::Rook,
                             PieceType::Bishop,
-                            PieceType::King,
+                            PieceType::Knight,
                         ][..]
                     } else {
                         &[PieceType::Pawn][..]
