@@ -214,35 +214,37 @@ impl GameState {
     }
 
     fn field_under_attack(&self, pos: usize) -> bool {
-        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, false, true) {
+        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, false, true)
+        {
             match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::InitKing,_) | (PieceType::King,_) if distance == 1 => return true,
-                (PieceType::InitKing,_) | (PieceType::King,_) => {},
+                (PieceType::InitKing, _) | (PieceType::King, _) if distance == 1 => return true,
+                (PieceType::InitKing, _) | (PieceType::King, _) => {}
                 (PieceType::Queen, _) => return true,
                 (PieceType::InitRook, _) | (PieceType::Rook, _) => return true,
-                (PieceType::Bishop, _) => {},
-                (PieceType::Knight, _) => {},
-                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {},
+                (PieceType::Bishop, _) => {}
+                (PieceType::Knight, _) => {}
+                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {}
             }
         }
-        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, false, true) {
+        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, false, true)
+        {
             match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::InitKing,_) | (PieceType::King,_) if distance == 1 => return true,
-                (PieceType::InitKing,_) | (PieceType::King,_) => {},
+                (PieceType::InitKing, _) | (PieceType::King, _) if distance == 1 => return true,
+                (PieceType::InitKing, _) | (PieceType::King, _) => {}
                 (PieceType::Queen, _) => return true,
-                (PieceType::InitRook, _) | (PieceType::Rook, _) => {},
+                (PieceType::InitRook, _) | (PieceType::Rook, _) => {}
                 (PieceType::Bishop, _) => return true,
-                (PieceType::Knight, _) => {},
-                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {},
+                (PieceType::Knight, _) => {}
+                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {}
             }
         }
-        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, false, true) {
+        for (other_pos, _) in self.get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, false, true) {
             match self.board.fields[other_pos].expect("Only requested occupied fields.") {
                 (PieceType::Knight, _) => return true,
                 _ => {}
             }
         }
-        // For pawns, we need the movement direction of our pawns because that's
+        // For pawns, we need the movement direction of our own pawns because that's
         // where attacking pawns (looking from our position) are located. It's
         // a little bit counter-intuitive.
         let (_, _, capture_moves) = self.get_pawn_moves(self.turn());
@@ -262,7 +264,11 @@ impl GameState {
         }
         new_states
     }
-    pub fn get_pseudo_legal_moves_for_single_piece(&self, piece: PieceType, pos: usize) -> Vec<GameState> {
+    pub fn get_pseudo_legal_moves_for_single_piece(
+        &self,
+        piece: PieceType,
+        pos: usize,
+    ) -> Vec<GameState> {
         let mut new_states = Vec::new();
         match piece {
             PieceType::InitKing | PieceType::King => {
@@ -271,7 +277,33 @@ impl GameState {
                 {
                     new_states.push(self.new_state_from_to(PieceType::King, pos, new_pos));
                 }
-                // TODO castlings!
+                if PieceType::InitKing == piece && !self.field_under_attack(pos) {
+                    let castling_options: [(isize, isize); 2] = [(-1, 4), (1, 3)];
+                    for &(step, rook_distance) in castling_options.iter() {
+                        let castling_pos = |distance| ((pos as isize) + step * distance) as usize;
+                        if self.board.fields[castling_pos(rook_distance)]
+                            != Some((PieceType::InitRook, self.turn()))
+                        {
+                            continue;
+                        }
+                        let occupied_field = (1..rook_distance)
+                            .find(|&distance| self.board.fields[castling_pos(distance)] != None);
+                        if let Some(_) = occupied_field {
+                            continue;
+                        }
+                        if self.field_under_attack(castling_pos(1))
+                            || self.field_under_attack(castling_pos(2))
+                        {
+                            continue;
+                        }
+                        let mut new_state =
+                            self.new_state_from_to(PieceType::King, pos, castling_pos(2));
+                        new_state.board.fields[castling_pos(rook_distance)] = None;
+                        new_state.board.fields[castling_pos(1)] =
+                            Some((PieceType::Rook, self.turn()));
+                        new_states.push(new_state);
+                    }
+                }
             }
             PieceType::Queen => {
                 for (new_pos, _) in
@@ -353,6 +385,5 @@ impl GameState {
         new_states
     }
 
-    fn _unused_placeholder(&self) {
-    }
+    fn _unused_placeholder(&self) {}
 }

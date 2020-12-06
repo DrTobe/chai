@@ -27,8 +27,8 @@ fn main() {
                 None => break,
             };
             if board_view::reshow_board(&mut siv, new_state.board, ms(500)) == true
-                //|| board_view::reshow_board(&mut siv, game.board, ms(100)) == true
-                //|| board_view::reshow_board(&mut siv, new_state.board, ms(100)) == true
+            //|| board_view::reshow_board(&mut siv, game.board, ms(100)) == true
+            //|| board_view::reshow_board(&mut siv, new_state.board, ms(100)) == true
             {
                 return;
             }
