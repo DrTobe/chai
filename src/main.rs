@@ -14,23 +14,26 @@ fn main() {
     board_view::show_board(board, ms(300));
     */
 
-    let mut game = game::GameState { board, ply: 0 };
-
     loop {
-        let new_state = match game
-            .get_pseudo_legal_moves()
-            .choose(&mut rand::thread_rng())
-        {
-            Some(s) => *s,
-            None => break,
-        };
-        if board_view::show_board(new_state.board, ms(100)) == true
-            || board_view::show_board(game.board, ms(100)) == true
-            || board_view::show_board(new_state.board, ms(100)) == true
-        {
-            break;
+        let mut game = game::GameState { board, ply: 0 };
+
+        let mut siv = cursive::default();
+        loop {
+            let new_state = match game
+                .get_pseudo_legal_moves()
+                .choose(&mut rand::thread_rng())
+            {
+                Some(s) => *s,
+                None => break,
+            };
+            if board_view::reshow_board(&mut siv, new_state.board, ms(500)) == true
+                //|| board_view::reshow_board(&mut siv, game.board, ms(100)) == true
+                //|| board_view::reshow_board(&mut siv, new_state.board, ms(100)) == true
+            {
+                return;
+            }
+            game = new_state;
         }
-        game = new_state;
     }
 }
 
