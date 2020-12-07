@@ -186,6 +186,11 @@ impl BoardState {
         }
         false
     }
+
+    pub fn king_in_check(&self, player: Player) -> bool {
+        let king_pos = self.find_king(player);
+        self.field_under_attack(king_pos, player)
+    }
 }
 
 type Direction = (isize, isize);
@@ -258,11 +263,12 @@ fn get_pawn_moves(player: Player) -> (usize, &'static [Direction], &'static [Dir
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GameState {
     pub ply: usize,
+    pub fifty_move_rule_last_event: usize,
     pub board: BoardState,
 }
 
 impl GameState {
-    fn turn(&self) -> Player {
+    pub fn turn(&self) -> Player {
         if self.ply % 2 == 0 {
             Player::White
         } else {
@@ -272,9 +278,12 @@ impl GameState {
 
     fn new_state_from_to(&self, piece: PieceType, from: usize, to: usize) -> GameState {
         let mut new_state = *self;
-        new_state.board.fields[from] = None;
-        new_state.board.fields[to] = Some((piece, self.turn()));
         new_state.ply = self.ply + 1;
+        new_state.board.fields[from] = None;
+        let old = new_state.board.fields[to].replace((piece, self.turn()));
+        if old != None || piece == PieceType::Pawn {
+            new_state.fifty_move_rule_last_event = new_state.ply;
+        }
         new_state
     }
 
@@ -463,9 +472,12 @@ impl GameState {
         self.get_pseudo_legal_moves()
             .drain(..)
             .filter(|&new_state| {
-                let king_pos = new_state.board.find_king(self.turn());
-                !new_state.board.field_under_attack(king_pos, self.turn())
+                !new_state.board.king_in_check(self.turn())
             })
             .collect()
+    }
+
+    pub fn fifty_move_rule_draw(&self) -> bool {
+        self.ply - self.fifty_move_rule_last_event >= 150
     }
 }
