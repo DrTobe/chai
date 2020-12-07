@@ -1,3 +1,5 @@
+use std::ops;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PieceType {
     InitKing,
@@ -15,6 +17,15 @@ pub enum PieceType {
 pub enum Player {
     Black,
     White,
+}
+
+impl Player {
+    pub fn opponent(&self) -> Player {
+        match self {
+            Player::White => Player::Black,
+            Player::Black => Player::White,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,6 +81,111 @@ impl BoardState {
         }
         pieces
     }
+
+    // far = pieces which can move far distances ... plus king because it behaves
+    // the same :)
+    pub fn get_far_moves(
+        &self,
+        pos: usize,
+        directions: &[Direction],
+        max_steps: usize,
+        move_to_empty: bool,
+        move_to_capture: bool,
+        player: Player,
+    ) -> Vec<(usize, usize)> {
+        let mut positions = Vec::with_capacity(28); // queen: 4 dirs, 7 steps
+        for direction in directions {
+            for (new_pos, distance) in get_steps(pos, *direction, max_steps) {
+                match self.fields[new_pos] {
+                    None => {
+                        if move_to_empty {
+                            positions.push((new_pos, distance));
+                        }
+                    }
+                    Some((_, p)) => {
+                        if move_to_capture && p != player {
+                            positions.push((new_pos, distance));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        positions
+    }
+
+    pub fn find_king(&self, player: Player) -> usize {
+        for pos in 0..64 {
+            if self.fields[pos] == Some((PieceType::King, player))
+                || self.fields[pos] == Some((PieceType::InitKing, player))
+            {
+                return pos;
+            }
+        }
+        panic!("Where is your King?");
+    }
+
+    fn field_under_attack(&self, pos: usize, player: Player) -> bool {
+        for (other_pos, distance) in
+            self.get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, false, true, player)
+        {
+            match self.fields[other_pos].expect("Only requested occupied fields.") {
+                (PieceType::InitKing, p) | (PieceType::King, p) if distance == 1 => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                (PieceType::Queen, p) | (PieceType::InitRook, p) | (PieceType::Rook, p) => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (other_pos, distance) in
+            self.get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, false, true, player)
+        {
+            match self.fields[other_pos].expect("Only requested occupied fields.") {
+                (PieceType::InitKing, p) | (PieceType::King, p) if distance == 1 => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                (PieceType::Queen, p) | (PieceType::Bishop, p) => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (other_pos, _) in self.get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, false, true, player) {
+            match self.fields[other_pos].expect("Only requested occupied fields.") {
+                (PieceType::Knight, p) => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        // For pawns, we need the movement direction of our own pawns because that's
+        // where attacking pawns (looking from our position) are located. It's
+        // a little bit counter-intuitive.
+        let (_, _, capture_moves) = get_pawn_moves(player);
+        for (other_pos, _) in self.get_far_moves(pos, capture_moves, 1, false, true, player) {
+            match self.fields[other_pos].expect("Only requested occupied fields.") {
+                (PieceType::InitPawn, p) | (PieceType::Pawn, p) => {
+                    if p != player {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
 }
 
 type Direction = (isize, isize);
@@ -93,7 +209,6 @@ const DIRECTIONS: [Direction; 16] = [
     (2, -1),
 ];
 
-use std::ops;
 const WHITE_PAWN_MOVE: ops::Range<usize> = 0..1;
 const BLACK_PAWN_MOVE: ops::Range<usize> = 1..2;
 const WHITE_PAWN_CAPTURE: ops::Range<usize> = 4..6;
@@ -125,6 +240,21 @@ pub fn get_steps(pos: usize, direction: Direction, steps: usize) -> Vec<(usize, 
     positions
 }
 
+fn get_pawn_moves(player: Player) -> (usize, &'static [Direction], &'static [Direction]) {
+    match player {
+        Player::White => (
+            7,
+            &DIRECTIONS[WHITE_PAWN_MOVE],
+            &DIRECTIONS[WHITE_PAWN_CAPTURE],
+        ),
+        Player::Black => (
+            0,
+            &DIRECTIONS[BLACK_PAWN_MOVE],
+            &DIRECTIONS[BLACK_PAWN_CAPTURE],
+        ),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GameState {
     pub ply: usize,
@@ -148,37 +278,6 @@ impl GameState {
         new_state
     }
 
-    // far = pieces which can move far distances ... plus king because it behaves
-    // the same :)
-    pub fn get_far_moves(
-        &self,
-        pos: usize,
-        directions: &[Direction],
-        max_steps: usize,
-        move_to_empty: bool,
-        move_to_capture: bool,
-    ) -> Vec<(usize, usize)> {
-        let mut positions = Vec::with_capacity(28); // queen: 4 dirs, 7 steps
-        for direction in directions {
-            for (new_pos, distance) in get_steps(pos, *direction, max_steps) {
-                match self.board.fields[new_pos] {
-                    None => {
-                        if move_to_empty {
-                            positions.push((new_pos, distance));
-                        }
-                    }
-                    Some((_, player)) => {
-                        if move_to_capture && player != self.turn() {
-                            positions.push((new_pos, distance));
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        positions
-    }
-
     fn store_en_passant_info(&self, state: &mut GameState, pos: usize, new_pos: usize) {
         // Handling en passant movements. Here: remember that
         // a double step occured.
@@ -198,65 +297,6 @@ impl GameState {
         states
     }
 
-    fn get_pawn_moves(&self, player: Player) -> (usize, &[Direction], &[Direction]) {
-        match player {
-            Player::White => (
-                7,
-                &DIRECTIONS[WHITE_PAWN_MOVE],
-                &DIRECTIONS[WHITE_PAWN_CAPTURE],
-            ),
-            Player::Black => (
-                0,
-                &DIRECTIONS[BLACK_PAWN_MOVE],
-                &DIRECTIONS[BLACK_PAWN_CAPTURE],
-            ),
-        }
-    }
-
-    fn field_under_attack(&self, pos: usize) -> bool {
-        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, false, true)
-        {
-            match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::InitKing, _) | (PieceType::King, _) if distance == 1 => return true,
-                (PieceType::InitKing, _) | (PieceType::King, _) => {}
-                (PieceType::Queen, _) => return true,
-                (PieceType::InitRook, _) | (PieceType::Rook, _) => return true,
-                (PieceType::Bishop, _) => {}
-                (PieceType::Knight, _) => {}
-                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {}
-            }
-        }
-        for (other_pos, distance) in self.get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, false, true)
-        {
-            match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::InitKing, _) | (PieceType::King, _) if distance == 1 => return true,
-                (PieceType::InitKing, _) | (PieceType::King, _) => {}
-                (PieceType::Queen, _) => return true,
-                (PieceType::InitRook, _) | (PieceType::Rook, _) => {}
-                (PieceType::Bishop, _) => return true,
-                (PieceType::Knight, _) => {}
-                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => {}
-            }
-        }
-        for (other_pos, _) in self.get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, false, true) {
-            match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::Knight, _) => return true,
-                _ => {}
-            }
-        }
-        // For pawns, we need the movement direction of our own pawns because that's
-        // where attacking pawns (looking from our position) are located. It's
-        // a little bit counter-intuitive.
-        let (_, _, capture_moves) = self.get_pawn_moves(self.turn());
-        for (other_pos, _) in self.get_far_moves(pos, capture_moves, 1, false, true) {
-            match self.board.fields[other_pos].expect("Only requested occupied fields.") {
-                (PieceType::InitPawn, _) | (PieceType::Pawn, _) => return true,
-                _ => {}
-            }
-        }
-        false
-    }
-
     pub fn get_pseudo_legal_moves(&self) -> Vec<GameState> {
         let mut new_states = Vec::new();
         for (piece, pos) in self.board.get_pieces_with_pos(self.turn()) {
@@ -272,12 +312,18 @@ impl GameState {
         let mut new_states = Vec::new();
         match piece {
             PieceType::InitKing | PieceType::King => {
-                for (new_pos, _) in
-                    self.get_far_moves(pos, &DIRECTIONS[STRAIGHT_AND_DIAGONAL], 1, true, true)
-                {
+                for (new_pos, _) in self.board.get_far_moves(
+                    pos,
+                    &DIRECTIONS[STRAIGHT_AND_DIAGONAL],
+                    1,
+                    true,
+                    true,
+                    self.turn(),
+                ) {
                     new_states.push(self.new_state_from_to(PieceType::King, pos, new_pos));
                 }
-                if PieceType::InitKing == piece && !self.field_under_attack(pos) {
+                if PieceType::InitKing == piece && !self.board.field_under_attack(pos, self.turn())
+                {
                     let castling_options: [(isize, isize); 2] = [(-1, 4), (1, 3)];
                     for &(step, rook_distance) in castling_options.iter() {
                         let castling_pos = |distance| ((pos as isize) + step * distance) as usize;
@@ -291,8 +337,8 @@ impl GameState {
                         if let Some(_) = occupied_field {
                             continue;
                         }
-                        if self.field_under_attack(castling_pos(1))
-                            || self.field_under_attack(castling_pos(2))
+                        if self.board.field_under_attack(castling_pos(1), self.turn())
+                            || self.board.field_under_attack(castling_pos(2), self.turn())
                         {
                             continue;
                         }
@@ -306,31 +352,46 @@ impl GameState {
                 }
             }
             PieceType::Queen => {
-                for (new_pos, _) in
-                    self.get_far_moves(pos, &DIRECTIONS[STRAIGHT_AND_DIAGONAL], 7, true, true)
-                {
+                for (new_pos, _) in self.board.get_far_moves(
+                    pos,
+                    &DIRECTIONS[STRAIGHT_AND_DIAGONAL],
+                    7,
+                    true,
+                    true,
+                    self.turn(),
+                ) {
                     new_states.push(self.new_state_from_to(PieceType::Queen, pos, new_pos));
                 }
             }
             PieceType::InitRook | PieceType::Rook => {
-                for (new_pos, _) in self.get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, true, true) {
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, &DIRECTIONS[STRAIGHT], 7, true, true, self.turn())
+                {
                     new_states.push(self.new_state_from_to(PieceType::Rook, pos, new_pos));
                 }
             }
             PieceType::Bishop => {
-                for (new_pos, _) in self.get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, true, true) {
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, &DIRECTIONS[DIAGONAL], 7, true, true, self.turn())
+                {
                     new_states.push(self.new_state_from_to(PieceType::Bishop, pos, new_pos));
                 }
             }
             PieceType::Knight => {
-                for (new_pos, _) in self.get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, true, true) {
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, &DIRECTIONS[KNIGHT], 1, true, true, self.turn())
+                {
                     new_states.push(self.new_state_from_to(PieceType::Knight, pos, new_pos));
                 }
             }
             PieceType::InitPawn => {
-                let (_, move_moves, capture_moves) = self.get_pawn_moves(self.turn());
+                let (_, move_moves, capture_moves) = get_pawn_moves(self.turn());
                 for (i, (new_pos, _)) in self
-                    .get_far_moves(pos, move_moves, 2, true, false)
+                    .board
+                    .get_far_moves(pos, move_moves, 2, true, false, self.turn())
                     .iter()
                     .enumerate()
                 {
@@ -340,13 +401,19 @@ impl GameState {
                     }
                     new_states.push(new_state);
                 }
-                for (new_pos, _) in self.get_far_moves(pos, capture_moves, 1, false, true) {
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, capture_moves, 1, false, true, self.turn())
+                {
                     new_states.push(self.new_state_from_to(PieceType::Pawn, pos, new_pos));
                 }
             }
             PieceType::Pawn => {
-                let (final_row, move_moves, capture_moves) = self.get_pawn_moves(self.turn());
-                for (new_pos, _) in self.get_far_moves(pos, move_moves, 1, true, false) {
+                let (final_row, move_moves, capture_moves) = get_pawn_moves(self.turn());
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, move_moves, 1, true, false, self.turn())
+                {
                     let new_state = self.new_state_from_to(piece, pos, new_pos);
                     if new_pos / 8 == final_row {
                         for promoted_state in
@@ -358,7 +425,10 @@ impl GameState {
                         new_states.push(new_state);
                     }
                 }
-                for (new_pos, _) in self.get_far_moves(pos, capture_moves, 1, false, true) {
+                for (new_pos, _) in
+                    self.board
+                        .get_far_moves(pos, capture_moves, 1, false, true, self.turn())
+                {
                     let new_state = self.new_state_from_to(piece, pos, new_pos);
                     if new_pos / 8 == final_row {
                         for promoted_state in
@@ -371,7 +441,10 @@ impl GameState {
                     }
                 }
                 if self.ply == self.board.en_passant_field.ply + 1 {
-                    for (new_pos, _) in self.get_far_moves(pos, capture_moves, 1, true, false) {
+                    for (new_pos, _) in
+                        self.board
+                            .get_far_moves(pos, capture_moves, 1, true, false, self.turn())
+                    {
                         // No promotions while capturing en-passant possible
                         if self.board.en_passant_field.skipped == new_pos {
                             let mut new_state = self.new_state_from_to(piece, pos, new_pos);
@@ -385,5 +458,14 @@ impl GameState {
         new_states
     }
 
-    fn _unused_placeholder(&self) {}
+    pub fn get_legal_moves(&self) -> Vec<GameState> {
+        //self.get_pseudo_legal_moves().drain_filter(...) // currently nightly only
+        self.get_pseudo_legal_moves()
+            .drain(..)
+            .filter(|&new_state| {
+                let king_pos = new_state.board.find_king(self.turn());
+                !new_state.board.field_under_attack(king_pos, self.turn())
+            })
+            .collect()
+    }
 }

@@ -19,10 +19,7 @@ fn main() {
 
         let mut siv = cursive::default();
         loop {
-            let new_state = match game
-                .get_pseudo_legal_moves()
-                .choose(&mut rand::thread_rng())
-            {
+            let new_state = match game.get_legal_moves().choose(&mut rand::thread_rng()) {
                 Some(s) => *s,
                 None => break,
             };
@@ -34,6 +31,11 @@ fn main() {
             }
             game = new_state;
         }
+        drop(siv);
+        println!("===========");
+        println!("FINAL STATE");
+        println!("===========");
+        println!("{:?}", game);
     }
 }
 
