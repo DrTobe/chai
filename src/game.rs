@@ -82,6 +82,16 @@ impl BoardState {
         pieces
     }
 
+    pub fn get_pieces(&self) -> Vec<(PieceType, Player)> {
+        let mut pieces = Vec::with_capacity(32);
+        for pos in 0..64 {
+            if let Some(pp) = self.fields[pos] {
+                pieces.push(pp);
+            }
+        }
+        pieces
+    }
+
     // far = pieces which can move far distances ... plus king because it behaves
     // the same :)
     pub fn get_far_moves(
