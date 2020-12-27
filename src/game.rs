@@ -481,9 +481,7 @@ impl GameState {
         //self.get_pseudo_legal_moves().drain_filter(...) // currently nightly only
         self.get_pseudo_legal_moves()
             .drain(..)
-            .filter(|&new_state| {
-                !new_state.board.king_in_check(self.turn())
-            })
+            .filter(|&new_state| !new_state.board.king_in_check(self.turn()))
             .collect()
     }
 

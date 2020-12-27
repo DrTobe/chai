@@ -16,7 +16,7 @@ function minimax(node, depth, maximizingPlayer) is
 
 use crate::game::*;
 
-pub fn minimax(game_state: GameState, depth: usize, heuristic: &Fn(GameState)->i64) -> i64 {
+pub fn minimax(game_state: GameState, depth: usize, heuristic: &Fn(GameState) -> i64) -> i64 {
     if depth == 0 {
         return heuristic(game_state);
     }
@@ -34,7 +34,9 @@ pub fn minimax(game_state: GameState, depth: usize, heuristic: &Fn(GameState)->i
             return 0;
         }
     }
-    let values = new_states.into_iter().map(|s| minimax(s, depth-1, heuristic));
+    let values = new_states
+        .into_iter()
+        .map(|s| minimax(s, depth - 1, heuristic));
     match game_state.turn() {
         Player::White => values.max().unwrap(),
         Player::Black => values.min().unwrap(),
