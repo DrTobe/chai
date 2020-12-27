@@ -25,6 +25,12 @@ fn main() {
         let mut siv = cursive::default();
         let game_result = loop {
             let minimax_res = minimax::minimax(game, 3, &minimax::weighted_piececount);
+            let alphabeta_res = minimax::alphabeta_init(game, 3, &minimax::weighted_piececount);
+            assert_eq!(alphabeta_res.0, minimax_res.0);
+            let minimax_num_actions = minimax_res.1.len();
+            let alphabeta_num_actions = alphabeta_res.1.len();
+            //assert_eq!(alphabeta_num_actions, minimax_num_actions);
+            //assert_eq!(minimax_res.1, alphabeta_res.1);
             let new_states = minimax_res.1;
             if new_states.len() > 0 {
                 game = choose(new_states).unwrap();
@@ -34,7 +40,10 @@ fn main() {
                         .child(board_view::BoardView {
                             board: game.board,
                         })
-                        .child(TextView::new(format!("Num Nodes: {}", minimax_res.2))),
+                        .child(TextView::new(format!("Minimax Nodes: {}", minimax_res.2)))
+                        .child(TextView::new(format!("Alphabeta Nodes: {}", alphabeta_res.2)))
+                        .child(TextView::new(format!("Minimax num actions: {}", minimax_num_actions)))
+                        .child(TextView::new(format!("Alphabeta num actions: {}", alphabeta_num_actions)))
                 );
                 //if board_view::reshow_board(&mut siv, new_state.board, ms(500)) == true {
                 if board_view::show_abortable(&mut siv, ms(500)) == true {
@@ -51,6 +60,9 @@ fn main() {
                     } else {
                         break format!("DRAW: {:?} can not move.", game.turn());
                     }
+                }
+                else {
+                    panic!("No possible actions and no final game state reached.");
                 }
             }
         };
