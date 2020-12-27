@@ -34,7 +34,7 @@ fn main() {
             let new_states = minimax_res.1;
             if new_states.len() > 0 {
                 game = choose(new_states).unwrap();
-                siv.clear();
+                siv.pop_layer();
                 siv.add_layer(
                     LinearLayout::vertical()
                         .child(board_view::BoardView {
@@ -66,7 +66,7 @@ fn main() {
                 }
             }
         };
-        siv.clear();
+        siv.pop_layer();
         siv.add_layer(
             LinearLayout::vertical()
                 .child(board_view::BoardView {
