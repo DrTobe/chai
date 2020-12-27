@@ -27,12 +27,12 @@ fn main() {
             let minimax_res = minimax::minimax(game, 3, &minimax::weighted_piececount);
             let new_states = minimax_res.1;
             if new_states.len() > 0 {
-                let new_state = choose(new_states).unwrap();
+                game = choose(new_states).unwrap();
                 siv.clear();
                 siv.add_layer(
                     LinearLayout::vertical()
                         .child(board_view::BoardView {
-                            board: new_state.board,
+                            board: game.board,
                         })
                         .child(TextView::new(format!("Num Nodes: {}", minimax_res.2))),
                 );
@@ -40,7 +40,6 @@ fn main() {
                 if board_view::show_abortable(&mut siv, ms(500)) == true {
                     return;
                 }
-                game = new_state;
             } else {
                 if game.fifty_move_rule_draw() {
                     break "DRAW: 75 moves without event.".to_string();
@@ -55,6 +54,15 @@ fn main() {
                 }
             }
         };
+        siv.clear();
+        siv.add_layer(
+            LinearLayout::vertical()
+                .child(board_view::BoardView {
+                    board: game.board,
+                })
+                .child(TextView::new(game_result.clone())),
+            );
+        board_view::show_abortable(&mut siv, ms(5000));
         drop(siv);
         println!("===========");
         println!("FINAL STATE");
