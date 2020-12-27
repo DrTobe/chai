@@ -1,3 +1,5 @@
+use cursive::views::{LinearLayout, TextView};
+use rand::seq::SliceRandom;
 use std::time;
 
 pub mod board_view;
@@ -23,8 +25,19 @@ fn main() {
         let mut siv = cursive::default();
         let game_result = loop {
             let minimax_res = minimax::minimax(game, 3, &minimax::weighted_piececount);
-            if let Some(new_state) = minimax_res.1 {
-                if board_view::reshow_board(&mut siv, new_state.board, ms(500)) == true {
+            let new_states = minimax_res.1;
+            if new_states.len() > 0 {
+                let new_state = choose(new_states).unwrap();
+                siv.clear();
+                siv.add_layer(
+                    LinearLayout::vertical()
+                        .child(board_view::BoardView {
+                            board: new_state.board,
+                        })
+                        .child(TextView::new(format!("Num Nodes: {}", minimax_res.2))),
+                );
+                //if board_view::reshow_board(&mut siv, new_state.board, ms(500)) == true {
+                if board_view::show_abortable(&mut siv, ms(500)) == true {
                     return;
                 }
                 game = new_state;
@@ -55,4 +68,8 @@ fn main() {
 
 pub fn ms(millis: u64) -> time::Duration {
     time::Duration::from_millis(millis)
+}
+
+pub fn choose<T: Copy>(s: Vec<T>) -> Option<T> {
+    s.choose(&mut rand::thread_rng()).map(|x| *x)
 }

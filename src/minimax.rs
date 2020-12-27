@@ -16,29 +16,27 @@ function minimax(node, depth, maximizingPlayer) is
 
 use crate::game::*;
 
-use rand::seq::SliceRandom;
-
-// Returns tuple (best value, chosen action, number of nodes evaluated)
+// Returns tuple (best value, best actions, number of nodes evaluated)
 pub fn minimax(
     game_state: GameState,
     depth: usize,
     heuristic: &impl Fn(GameState) -> i32,
-) -> (i32, Option<GameState>, u64) {
+) -> (i32, Vec<GameState>, u64) {
     if depth == 0 {
-        return (heuristic(game_state), None, 1);
+        return (heuristic(game_state), vec![], 1);
     }
     if game_state.fifty_move_rule_draw() {
-        return (0, None, 1);
+        return (0, vec![], 1);
     }
     let new_states = game_state.get_legal_moves();
     if new_states.len() == 0 {
         if game_state.board.king_in_check(game_state.turn()) {
             match game_state.turn() {
-                Player::White => return (i32::MIN, None, 1),
-                Player::Black => return (i32::MAX, None, 1),
+                Player::White => return (i32::MIN, vec![], 1),
+                Player::Black => return (i32::MAX, vec![], 1),
             }
         } else {
-            return (0, None, 1);
+            return (0, vec![], 1);
         }
     }
     let (better, fold_init_val) = match game_state.turn() {
@@ -47,21 +45,18 @@ pub fn minimax(
     };
     new_states
         .into_iter()
-        .fold((fold_init_val, None, 0), |acc, new_state| {
+        .fold((fold_init_val, vec![], 0), |mut acc, new_state| {
             let minimax_res = minimax(new_state, depth - 1, heuristic);
             let num_nodes_evald = acc.2 + minimax_res.2;
             if minimax_res.0.cmp(&acc.0) == better {
-                (minimax_res.0, Some(new_state), num_nodes_evald)
+                (minimax_res.0, vec![new_state], num_nodes_evald)
             } else if minimax_res.0 == acc.0 {
-                (acc.0, one_of(acc.1, Some(new_state)), num_nodes_evald)
+                acc.1.push(new_state);
+                (acc.0, acc.1, num_nodes_evald)
             } else {
                 (acc.0, acc.1, num_nodes_evald)
             }
         })
-}
-
-fn one_of<T: Copy>(a: T, b: T) -> T {
-    *[a, b].choose(&mut rand::thread_rng()).unwrap()
 }
 
 pub fn weighted_piececount(game: GameState) -> i32 {

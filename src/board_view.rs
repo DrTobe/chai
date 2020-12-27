@@ -14,13 +14,8 @@ use crate::game::*;
 
 static CANCELED: atomic::AtomicBool = atomic::AtomicBool::new(false);
 
-pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Duration) -> bool {
+pub fn show_abortable(siv: &mut Cursive, duration: time::Duration) -> bool {
     CANCELED.store(false, atomic::Ordering::Relaxed);
-    siv.add_layer(
-        Dialog::new()
-            .title("ChaiChess")
-            .content(LinearLayout::horizontal().child(Panel::new(BoardView { board }))),
-    );
     siv.set_global_callback(cursive::event::Event::Char('q'), |_| {
         CANCELED.store(true, atomic::Ordering::Relaxed)
     });
@@ -41,13 +36,23 @@ pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Durati
     false
 }
 
+pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Duration) -> bool {
+    siv.clear();
+    siv.add_layer(
+        Dialog::new()
+            .title("ChaiChess")
+            .content(LinearLayout::horizontal().child(Panel::new(BoardView { board }))),
+    );
+    show_abortable(siv, duration)
+}
+
 pub fn show_board(board: BoardState, duration: time::Duration) -> bool {
     let mut siv = cursive::default();
     reshow_board(&mut siv, board, duration)
 }
 
-struct BoardView {
-    board: BoardState,
+pub struct BoardView {
+    pub board: BoardState,
 }
 
 impl cursive::view::View for BoardView {
