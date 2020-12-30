@@ -1,67 +1,63 @@
-//use cursive::direction::Direction;
-//use cursive::event::{Event, EventResult, MouseButton, MouseEvent};
-use cursive::theme::{BaseColor, Color, ColorStyle};
-use cursive::views::{/*Button,*/ Dialog, LinearLayout, Panel /*SelectView*/};
-use cursive::Cursive;
-use cursive::Printer;
-use cursive::Vec2;
-
-use std::sync::atomic;
-use std::thread;
-use std::time;
+use tui::buffer::Buffer;
+use tui::layout::Rect;
+use tui::style::{Color, Style};
+use tui::widgets::Widget;
 
 use crate::game::*;
 
-static CANCELED: atomic::AtomicBool = atomic::AtomicBool::new(false);
-
-pub fn show_abortable(siv: &mut Cursive, duration: time::Duration) -> bool {
-    CANCELED.store(false, atomic::Ordering::Relaxed);
-    siv.set_global_callback(cursive::event::Event::Char('q'), |_| {
-        CANCELED.store(true, atomic::Ordering::Relaxed)
-    });
-    siv.refresh();
-    let mut passed = time::Duration::new(0, 0);
-    while passed < duration {
-        thread::sleep(crate::ms(50));
-        passed += crate::ms(50);
-        loop {
-            if siv.step() == false {
-                break;
-            }
-        }
-        if CANCELED.load(atomic::Ordering::Relaxed) == true {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn reshow_board(siv: &mut Cursive, board: BoardState, duration: time::Duration) -> bool {
-    siv.clear();
-    siv.add_layer(
-        Dialog::new()
-            .title("ChaiChess")
-            .content(LinearLayout::horizontal().child(Panel::new(BoardView { board }))),
-    );
-    show_abortable(siv, duration)
-}
-
-pub fn show_board(board: BoardState, duration: time::Duration) -> bool {
-    let mut siv = cursive::default();
-    reshow_board(&mut siv, board, duration)
-}
-
 pub struct BoardView {
     pub board: BoardState,
+    pub highlights: std::collections::HashSet<usize>,
 }
 
-impl cursive::view::View for BoardView {
-    fn draw(&self, printer: &Printer) {
+impl BoardView {
+    pub fn new(board: BoardState) -> Self {
+        Self {
+            board,
+            highlights: std::collections::HashSet::new(),
+        }
+    }
+}
+
+/*
+fn on_event(&mut self, event: event::Event) -> event::EventResult {
+    if let event::Event::Mouse { offset, position, event } = event {
+        if let event::MouseEvent::Press(event::MouseButton::Left) = event {
+            if offset.x >= position.x {
+                return event::EventResult::Consumed(
+                    Some(event::Callback::from_fn(|siv| {
+                        siv.quit();
+                })));
+            }
+            if position.x >= offset.x && position.x < offset.x+24 && position.y >= offset.y && position.y < offset.y+8 {
+                let x = position.x - offset.x;
+                let y = position.y - offset.y;
+                let row = y;
+                let col = x / 3;
+                let field = (7-row) * 8 + col;
+                if self.highlights.contains(&field) {
+                    self.highlights.remove(&field);
+                } else {
+                    self.highlights.insert(field);
+                }
+                return event::EventResult::Consumed((self.callback)(field));
+            }
+        }
+    }
+    return event::EventResult::Ignored;
+}
+*/
+
+impl Widget for BoardView {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         for i in 0..64 {
             let row = 7 - (i / 8);
             let col = i % 8;
-            let x = col * 3;
-            let y = row;
+            let x = (col * 3) as u16;
+            let y = row as u16;
+            if x >= area.width || y >= area.height {
+                continue;
+            }
 
             let text = if let Some(piece_and_player) = self.board.fields[i] {
                 match piece_and_player {
@@ -88,17 +84,19 @@ impl cursive::view::View for BoardView {
                 "   "
             };
 
-            let color_style = if (row + col + 1) % 2 == 0 {
-                ColorStyle::new(Color::Dark(BaseColor::Black), Color::RgbLowRes(2, 2, 2))
-            } else {
-                ColorStyle::new(Color::Dark(BaseColor::Black), Color::RgbLowRes(5, 5, 5))
+            let base = Style::default().fg(Color::Black);
+            let color_style = match (is_dark_field(row, col), self.highlights.contains(&i)) {
+                (true, false) => base.bg(Color::Rgb(100, 100, 100)),
+                (false, false) => base.bg(Color::Rgb(250, 250, 250)),
+                (true, true) => base.bg(Color::Rgb(100, 100, 0)),
+                (false, true) => base.bg(Color::Rgb(200, 200, 0)),
             };
 
-            printer.with_color(color_style, |printer| printer.print((x, y), text));
+            buf.set_string(area.left() + x, area.top() + y, text, color_style);
         }
     }
+}
 
-    fn required_size(&mut self, _constraint: Vec2) -> Vec2 {
-        Vec2::new(24, 8)
-    }
+fn is_dark_field(row: usize, col: usize) -> bool {
+    (row + col + 1) % 2 == 0
 }

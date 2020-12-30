@@ -127,7 +127,7 @@ pub fn alphabeta(
     let mut num_nodes = 1;
 
     for new_state in new_states.into_iter() {
-        let van = alphabeta(new_state, depth-1, delta, gamma, heuristic);
+        let van = alphabeta(new_state, depth - 1, delta, gamma, heuristic);
         num_nodes += van.2;
         // maximize value
         if van.0.cmp(&best_val) == better {
@@ -142,7 +142,8 @@ pub fn alphabeta(
                 // if we are strictly interested in the value of the root
                 // node. In fact, we search for the best value of the
                 // root node's children.
-                if gamma.cmp(&delta) == better { //|| gamma == delta {
+                if gamma.cmp(&delta) == better {
+                    //|| gamma == delta {
                     break;
                 }
             }
@@ -151,7 +152,7 @@ pub fn alphabeta(
         } else {
         }
     }
-    
+
     (best_val, actions, num_nodes)
 }
 
@@ -166,7 +167,6 @@ pub fn alphabeta_init(
         Player::Black => alphabeta(game_state, depth, beta, alpha, heuristic),
     }
 }
-
 
 pub fn weighted_piececount(game: GameState) -> i32 {
     let mut sum = 0;
