@@ -3,50 +3,39 @@ use tui::layout::Rect;
 use tui::style::{Color, Style};
 use tui::widgets::Widget;
 
+use std::collections::HashSet;
+
 use crate::game::*;
 
 pub struct BoardView {
     pub board: BoardState,
-    pub highlights: std::collections::HashSet<usize>,
+    pub highlights: HashSet<usize>,
 }
 
 impl BoardView {
     pub fn new(board: BoardState) -> Self {
         Self {
             board,
-            highlights: std::collections::HashSet::new(),
+            highlights: HashSet::new(),
         }
     }
-}
+    pub fn newh(board: BoardState, highlights: HashSet<usize>) -> Self {
+        Self { board, highlights }
+    }
 
-/*
-fn on_event(&mut self, event: event::Event) -> event::EventResult {
-    if let event::Event::Mouse { offset, position, event } = event {
-        if let event::MouseEvent::Press(event::MouseButton::Left) = event {
-            if offset.x >= position.x {
-                return event::EventResult::Consumed(
-                    Some(event::Callback::from_fn(|siv| {
-                        siv.quit();
-                })));
-            }
-            if position.x >= offset.x && position.x < offset.x+24 && position.y >= offset.y && position.y < offset.y+8 {
-                let x = position.x - offset.x;
-                let y = position.y - offset.y;
-                let row = y;
-                let col = x / 3;
-                let field = (7-row) * 8 + col;
-                if self.highlights.contains(&field) {
-                    self.highlights.remove(&field);
-                } else {
-                    self.highlights.insert(field);
-                }
-                return event::EventResult::Consumed((self.callback)(field));
-            }
+    pub fn get_field_index_from_pos(area: Rect, x: u16, y: u16) -> Option<usize> {
+        if x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height {
+            let x = x - area.x;
+            let y = y - area.y;
+            let row = y as usize;
+            let col = (x / 3) as usize;
+            let field = (7 - row) * 8 + col;
+            Some(field)
+        } else {
+            None
         }
     }
-    return event::EventResult::Ignored;
 }
-*/
 
 impl Widget for BoardView {
     fn render(self, area: Rect, buf: &mut Buffer) {

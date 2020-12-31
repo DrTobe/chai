@@ -2,6 +2,7 @@ use rand::seq::SliceRandom;
 use std::collections::HashSet;
 use std::time;
 
+use crossterm::event;
 use tui::layout::Constraint;
 use tui::widgets::Paragraph;
 
@@ -12,12 +13,13 @@ pub mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     //tui_test()?;
-    autoplay()?;
+    //autoplay()?;
+    play_as(game::Player::White)?;
 
     Ok(())
 }
 
-fn tui_test() -> Result<(), Box<dyn std::error::Error>> {
+pub fn tui_test() -> Result<(), Box<dyn std::error::Error>> {
     let mut ctui = ui::CTui::new()?;
 
     let board = game::BoardState::new();
@@ -35,6 +37,7 @@ fn tui_test() -> Result<(), Box<dyn std::error::Error>> {
         let board = board_view::BoardView::new(board);
         f.render_widget(board, ui::center(chunks[1], 24, 8));
     })?;
+    //std::thread::sleep(ms(10000));
     Ok(())
 }
 
@@ -117,17 +120,13 @@ pub fn autoplay() -> Result<(), Box<dyn std::error::Error>> {
             let size = ui::center(f.size(), 30, 9);
             let chunks = ui::layout_vertical(
                 size,
-                [
-                    Constraint::Length(8),
-                    Constraint::Length(1),
-                ]
-                .as_ref(),
+                [Constraint::Length(8), Constraint::Length(1)].as_ref(),
             );
             let board = board_view::BoardView::new(game.board);
             f.render_widget(board, chunks[0]);
             f.render_widget(Paragraph::new(game_result2), chunks[1]);
         })?;
-        ui::show_abortable(&mut ctui, ms(5000));
+        ui::show_abortable(&mut ctui, ms(30000));
         drop(ctui);
         println!("===========");
         println!("FINAL STATE");
@@ -136,6 +135,140 @@ pub fn autoplay() -> Result<(), Box<dyn std::error::Error>> {
         println!("===========");
         println!("--RESULT---");
         println!("{}", game_result);
+    }
+}
+
+pub fn play_as(human: game::Player) -> Result<(), Box<dyn std::error::Error>> {
+    let board = game::BoardState::new();
+
+    let mut game = game::GameState {
+        board,
+        ply: 0,
+        fifty_move_rule_last_event: 0,
+    };
+
+    let mut ctui = ui::CTui::new()?;
+    let game_result = loop {
+        if game.get_legal_moves().len() > 0 {
+            // TODO fifty move rules draw??
+            game = if game.turn() == human {
+                match get_new_state_from_user(&mut ctui, game)? {
+                    Some(g) => g,
+                    None => return Ok(()),
+                }
+            } else {
+                ctui.terminal().draw(|f| {
+                    let size = ui::center(f.size(), 24, 8);
+                    let chunks = ui::layout_vertical(size, [Constraint::Length(8)].as_ref());
+                    let board = board_view::BoardView::new(game.board);
+                    f.render_widget(board, chunks[0]);
+                })?;
+                let start = time::Instant::now();
+                let alphabeta_res = minimax::alphabeta_init(game, 3, &minimax::weighted_piececount);
+                let new_states = alphabeta_res.1;
+                while start.elapsed() < ms(1000) {
+                    std::thread::sleep(ms(100));
+                }
+                choose(new_states).unwrap()
+            };
+        } else {
+            if game.fifty_move_rule_draw() {
+                break "DRAW: 75 moves without event.".to_string();
+            }
+            let new_states = game.get_legal_moves();
+            if new_states.len() == 0 {
+                if game.board.king_in_check(game.turn()) {
+                    break format!("{:?} WIN.", game.turn().opponent());
+                } else {
+                    break format!("DRAW: {:?} can not move.", game.turn());
+                }
+            } else {
+                panic!("No possible actions and no final game state reached.");
+            }
+        }
+    };
+    let game_result2 = game_result.clone();
+    ctui.terminal().draw(|f| {
+        let size = ui::center(f.size(), 30, 9);
+        let chunks = ui::layout_vertical(
+            size,
+            [Constraint::Length(8), Constraint::Length(1)].as_ref(),
+        );
+        let board = board_view::BoardView::new(game.board);
+        f.render_widget(board, chunks[0]);
+        f.render_widget(Paragraph::new(game_result2), chunks[1]);
+    })?;
+    ui::show_abortable(&mut ctui, ms(30000));
+    Ok(())
+}
+
+fn get_new_state_from_user(
+    ctui: &mut ui::CTui,
+    game: game::GameState,
+) -> Result<Option<game::GameState>, Box<dyn std::error::Error>> {
+    let mut selected_field: Option<usize> = None;
+    loop {
+        let (valid_targets, highlights, new_pos_and_states) = if let Some(field) = selected_field {
+            let mut targets = HashSet::new();
+            let piece = game.board.fields[field].unwrap().0;
+            let new_pos_and_states = game.get_legal_moves_for_single_piece(piece, field);
+            for &(new_pos, _) in &new_pos_and_states {
+                targets.insert(new_pos);
+            }
+            let mut h = targets.clone();
+            h.insert(field);
+            (targets, h, new_pos_and_states)
+        } else {
+            (HashSet::new(), HashSet::new(), Vec::new())
+        };
+        let mut board_pos = tui::layout::Rect::new(0, 0, 24, 8);
+        ctui.terminal().draw(|f| {
+            let size = ui::center(f.size(), 24, 8);
+            let chunks = ui::layout_vertical(size, [Constraint::Length(8)].as_ref());
+            let board = board_view::BoardView::newh(game.board, highlights);
+            board_pos = chunks[0];
+            f.render_widget(board, board_pos);
+        })?;
+        loop {
+            match event::read()? {
+                event::Event::Key(key_event) => {
+                    if key_event.code == event::KeyCode::Char('q') {
+                        return Ok(None);
+                    }
+                }
+                event::Event::Mouse(mouse_event) => {
+                    if mouse_event.kind == event::MouseEventKind::Down(event::MouseButton::Left) {
+                        selected_field = None;
+                        if let Some(clicked_field) = board_view::BoardView::get_field_index_from_pos(
+                            board_pos,
+                            mouse_event.column,
+                            mouse_event.row,
+                        ) {
+                            if valid_targets.contains(&clicked_field) { // TODO seems like this can be omitted using the conditions below
+                                let new_states: Vec<game::GameState> = new_pos_and_states.into_iter().filter(|&(pos, _state)| pos==clicked_field).map(|(_pos, state)| state).collect();
+                                if new_states.len() == 1 {
+                                    return Ok(Some(new_states[0]));
+                                } else if new_states.len() > 1 {
+                                    // TODO promotions?
+                                    return Ok(Some(new_states[0]));
+                                } else {
+                                    panic!("Internal error: Field was clickable but no new state found.");
+                                }
+                            } else if let Some(piece) = game.board.fields[clicked_field] {
+                                if piece.1 == game.turn() {
+                                    selected_field = Some(clicked_field);
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+                event::Event::Resize(_,_) => {
+                    break; // trigger redraw
+                }
+            }
+        }
     }
 }
 

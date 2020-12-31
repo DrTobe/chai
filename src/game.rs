@@ -286,7 +286,7 @@ impl GameState {
         }
     }
 
-    fn new_state_from_to(&self, piece: PieceType, from: usize, to: usize) -> GameState {
+    fn new_state_from_to(&self, piece: PieceType, from: usize, to: usize) -> (usize, GameState) {
         let mut new_state = *self;
         new_state.ply = self.ply + 1;
         new_state.board.fields[from] = None;
@@ -294,7 +294,7 @@ impl GameState {
         if old != None || piece == PieceType::Pawn {
             new_state.fifty_move_rule_last_event = new_state.ply;
         }
-        new_state
+        (to, new_state)
     }
 
     fn store_en_passant_info(&self, state: &mut GameState, pos: usize, new_pos: usize) {
@@ -307,15 +307,42 @@ impl GameState {
         }
     }
 
-    fn generate_pawn_promotions(&self, state: GameState, new_pos: usize) -> [GameState; 4] {
-        let mut states = [state; 4];
-        states[0].board.fields[new_pos] = Some((PieceType::Queen, self.turn()));
-        states[1].board.fields[new_pos] = Some((PieceType::Rook, self.turn()));
-        states[2].board.fields[new_pos] = Some((PieceType::Bishop, self.turn()));
-        states[3].board.fields[new_pos] = Some((PieceType::Knight, self.turn()));
+    fn generate_pawn_promotions(
+        &self,
+        pos_and_state: (usize, GameState),
+    ) -> [(usize, GameState); 4] {
+        let new_pos = pos_and_state.0;
+        let mut states = [pos_and_state; 4];
+        states[0].1.board.fields[new_pos] = Some((PieceType::Queen, self.turn()));
+        states[1].1.board.fields[new_pos] = Some((PieceType::Rook, self.turn()));
+        states[2].1.board.fields[new_pos] = Some((PieceType::Bishop, self.turn()));
+        states[3].1.board.fields[new_pos] = Some((PieceType::Knight, self.turn()));
         states
     }
 
+    /*
+    pub fn get_legal_moves(&self) -> Vec<GameState> {
+        //self.get_pseudo_legal_moves().drain_filter(...) // currently nightly only
+        self.get_pseudo_legal_moves()
+            .drain(..)
+            .filter(|&new_state| !new_state.board.king_in_check(self.turn()))
+            .collect()
+    }
+    */
+
+    pub fn get_legal_moves(&self) -> Vec<GameState> {
+        let mut new_states = Vec::new();
+        for (piece, pos) in self.board.get_pieces_with_pos(self.turn()) {
+            new_states.extend(
+                self.get_legal_moves_for_single_piece(piece, pos)
+                    .into_iter()
+                    .map(|(_new_pos, new_state)| new_state),
+            );
+        }
+        new_states
+    }
+
+    /*
     pub fn get_pseudo_legal_moves(&self) -> Vec<GameState> {
         let mut new_states = Vec::new();
         for (piece, pos) in self.board.get_pieces_with_pos(self.turn()) {
@@ -323,11 +350,25 @@ impl GameState {
         }
         new_states
     }
+    */
+
+    pub fn get_legal_moves_for_single_piece(
+        &self,
+        piece: PieceType,
+        pos: usize,
+    ) -> Vec<(usize, GameState)> {
+        //self.get_pseudo_legal_moves_for_single_piece().drain_filter(...) // currently nightly only
+        self.get_pseudo_legal_moves_for_single_piece(piece, pos)
+            .drain(..)
+            .filter(|&(_new_pos, new_state)| !new_state.board.king_in_check(self.turn()))
+            .collect()
+    }
+
     pub fn get_pseudo_legal_moves_for_single_piece(
         &self,
         piece: PieceType,
         pos: usize,
-    ) -> Vec<GameState> {
+    ) -> Vec<(usize, GameState)> {
         let mut new_states = Vec::new();
         match piece {
             PieceType::InitKing | PieceType::King => {
@@ -361,12 +402,12 @@ impl GameState {
                         {
                             continue;
                         }
-                        let mut new_state =
+                        let mut new_pos_and_state =
                             self.new_state_from_to(PieceType::King, pos, castling_pos(2));
-                        new_state.board.fields[castling_pos(rook_distance)] = None;
-                        new_state.board.fields[castling_pos(1)] =
+                        new_pos_and_state.1.board.fields[castling_pos(rook_distance)] = None;
+                        new_pos_and_state.1.board.fields[castling_pos(1)] =
                             Some((PieceType::Rook, self.turn()));
-                        new_states.push(new_state);
+                        new_states.push(new_pos_and_state);
                     }
                 }
             }
@@ -414,11 +455,12 @@ impl GameState {
                     .iter()
                     .enumerate()
                 {
-                    let mut new_state = self.new_state_from_to(PieceType::Pawn, pos, *new_pos);
+                    let mut new_pos_and_state =
+                        self.new_state_from_to(PieceType::Pawn, pos, *new_pos);
                     if i == 1 {
-                        self.store_en_passant_info(&mut new_state, pos, *new_pos);
+                        self.store_en_passant_info(&mut new_pos_and_state.1, pos, *new_pos);
                     }
-                    new_states.push(new_state);
+                    new_states.push(new_pos_and_state);
                 }
                 for (new_pos, _) in
                     self.board
@@ -433,30 +475,30 @@ impl GameState {
                     self.board
                         .get_far_moves(pos, move_moves, 1, true, false, self.turn())
                 {
-                    let new_state = self.new_state_from_to(piece, pos, new_pos);
+                    let new_pos_and_state = self.new_state_from_to(piece, pos, new_pos);
                     if new_pos / 8 == final_row {
-                        for promoted_state in
-                            self.generate_pawn_promotions(new_state, new_pos).iter()
+                        for promoted_pos_and_state in
+                            self.generate_pawn_promotions(new_pos_and_state).iter()
                         {
-                            new_states.push(*promoted_state);
+                            new_states.push(*promoted_pos_and_state);
                         }
                     } else {
-                        new_states.push(new_state);
+                        new_states.push(new_pos_and_state);
                     }
                 }
                 for (new_pos, _) in
                     self.board
                         .get_far_moves(pos, capture_moves, 1, false, true, self.turn())
                 {
-                    let new_state = self.new_state_from_to(piece, pos, new_pos);
+                    let new_pos_and_state = self.new_state_from_to(piece, pos, new_pos);
                     if new_pos / 8 == final_row {
-                        for promoted_state in
-                            self.generate_pawn_promotions(new_state, new_pos).iter()
+                        for promoted_pos_and_state in
+                            self.generate_pawn_promotions(new_pos_and_state).iter()
                         {
-                            new_states.push(*promoted_state);
+                            new_states.push(*promoted_pos_and_state);
                         }
                     } else {
-                        new_states.push(new_state);
+                        new_states.push(new_pos_and_state);
                     }
                 }
                 if self.ply == self.board.en_passant_field.ply + 1 {
@@ -466,23 +508,16 @@ impl GameState {
                     {
                         // No promotions while capturing en-passant possible
                         if self.board.en_passant_field.skipped == new_pos {
-                            let mut new_state = self.new_state_from_to(piece, pos, new_pos);
-                            new_state.board.fields[self.board.en_passant_field.target] = None;
-                            new_states.push(new_state);
+                            let mut new_pos_and_state = self.new_state_from_to(piece, pos, new_pos);
+                            new_pos_and_state.1.board.fields[self.board.en_passant_field.target] =
+                                None;
+                            new_states.push(new_pos_and_state);
                         }
                     }
                 }
             }
         }
         new_states
-    }
-
-    pub fn get_legal_moves(&self) -> Vec<GameState> {
-        //self.get_pseudo_legal_moves().drain_filter(...) // currently nightly only
-        self.get_pseudo_legal_moves()
-            .drain(..)
-            .filter(|&new_state| !new_state.board.king_in_check(self.turn()))
-            .collect()
     }
 
     pub fn fifty_move_rule_draw(&self) -> bool {
