@@ -125,8 +125,8 @@ view model =
           { onPress = Just Send
           , label = text "Send"
           }
+      , boardView newBoard
       ]
-
 
 -- DETECT ENTER
 
@@ -145,3 +145,121 @@ onEnter msg =
                     )
             )
         )
+
+-- CHESS Model
+
+type PieceType
+  = InitKing
+  | King
+  | Queen
+  | InitRook
+  | Rook
+  | Bishop
+  | Knight
+  | InitPawn
+  | Pawn
+
+type Player
+  = Black
+  | White
+
+type alias BoardState = 
+  { fields: List (Maybe (PieceType, Player))
+  , en_passant_field: EnPassantFieldInfo
+  }
+
+type alias EnPassantFieldInfo =
+  { ply: Int
+  , skipped: Int
+  , target: Int
+  }
+
+newBoard : BoardState
+newBoard = 
+  let
+    initRow = [ InitRook
+              , Knight
+              , Bishop
+              , Queen
+              , InitKing
+              , Bishop
+              , Knight
+              , InitRook
+              ]
+    fields =  List.map (\piece -> Just (piece, White)) initRow
+           ++ List.repeat 8 (Just (InitPawn, White))
+           ++ List.repeat (4*8) Nothing
+           ++ List.repeat 8 (Just (InitPawn, Black))
+           ++ List.map (\piece -> Just(piece, Black)) initRow
+    enPassant = { ply = 0         -- this is how it is marked as "invalid"
+                , skipped = 0xFF  -- in the Rust code. Those nubers are
+                , target = 0xFF } -- unsigned there.
+  in
+    BoardState fields enPassant
+
+type alias GameState =
+  { ply : Int
+  , fifty_move_rule_last_event : Int
+  , board : BoardState
+  }
+
+newGame : GameState
+newGame =
+  { ply = 0
+  , fifty_move_rule_last_event = 0
+  , board = newBoard
+  }
+
+-- CHESS view
+
+boardView : BoardState -> Element Msg
+boardView board =
+  let
+      subfields = \rowNum -> List.take 8 <| List.drop (rowNum*8) board.fields
+      subrow = \rowNum -> rowView rowNum <| subfields rowNum
+      sevenToZero = List.range 0 7 |> List.reverse
+  in
+      column [] <| List.map subrow sevenToZero
+
+rowView : Int -> List (Maybe (PieceType, Player)) -> Element Msg
+rowView rowNum fields =
+  let
+      isDarkField = \colNum -> modBy 2 (rowNum + colNum) == 0
+      fieldColor = \colNum -> case isDarkField colNum of
+        True -> rgb255 100 100 100
+        False -> rgb255 250 250 250
+      pieceImgSrc = \ptp -> case ptp of
+        (InitKing, Black) -> "black_king.png"
+        (King, Black) -> "black_king.png"
+        (Queen, Black) -> "black_queen.png"
+        (InitRook, Black) -> "black_rook.png"
+        (Rook, Black) -> "black_rook.png"
+        (Bishop, Black) -> "black_bishop.png"
+        (Knight, Black) -> "black_knight.png"
+        (InitPawn, Black) -> "black_pawn.png"
+        (Pawn, Black) -> "black_pawn.png"
+        (InitKing, White) -> "white_king.png"
+        (King, White) -> "white_king.png"
+        (Queen, White) -> "white_queen.png"
+        (InitRook, White) -> "white_rook.png"
+        (Rook, White) -> "white_rook.png"
+        (Bishop, White) -> "white_bishop.png"
+        (Knight, White) -> "white_knight.png"
+        (InitPawn, White) -> "white_pawn.png"
+        (Pawn, White) -> "white_pawn.png"
+      pieceImg = \ptp ->
+        image [ width <| px 40
+              , height <| px 40
+              ] { src = "piece-images/" ++ pieceImgSrc ptp
+                , description = pieceImgSrc ptp
+                }
+      field = \colNum maybePtp ->
+        el [ Background.color <| fieldColor colNum
+           , width <| px 40
+           , height <| px 40
+           ] <| case maybePtp of
+             Just ptp -> pieceImg ptp
+             Nothing -> none
+
+  in
+      row [] <| List.indexedMap field fields
