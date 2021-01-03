@@ -12,11 +12,28 @@ pub mod minimax;
 pub mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    serde_test();
     //tui_test()?;
     //autoplay()?;
-    play_as(game::Player::White)?;
+    //play_as(game::Player::White)?;
 
     Ok(())
+}
+
+pub fn serde_test() {
+    let board = game::BoardState::new();
+    let game = game::GameState {
+        board,
+        ply: 0,
+        fifty_move_rule_last_event: 0
+    };
+    let json_board = serde_json::to_string(&game).unwrap();
+    println!("{}", json_board);
+    // remove 11 .. 31 (first field)
+    //let json_board = format!("{}{}", &json_board[0..11], &json_board[32..]);
+    //println!("{}", json_board);
+    let deserd: game::GameState = serde_json::from_str(&json_board).unwrap();
+    println!("{:?}", deserd);
 }
 
 pub fn tui_test() -> Result<(), Box<dyn std::error::Error>> {

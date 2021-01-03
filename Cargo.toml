@@ -6,7 +6,21 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "chai"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "chai"
+required-features = ["build-binary"]
+
+[features]
+build-binary = ["crossterm", "tui"]
+
 [dependencies]
 rand = "0.7.3"
-crossterm = "0.19"
-tui = { version = "0.13", default-features = false, features = ['crossterm'] }
+wasm-bindgen = "0.2.69"
+serde_json = "1.0"
+serde = { version = "1.0.118", features = ["derive"] }
+crossterm = { version = "0.19", optional = true }
+tui = { version = "0.13", default-features = false, features = ['crossterm'], optional = true }

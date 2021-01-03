@@ -1,6 +1,9 @@
 use std::ops;
+use serde::{Serialize, Deserialize, ser::SerializeStruct, de, de::Deserializer, de::Visitor, de::SeqAccess, de::MapAccess};
+use std::fmt;
+use std::convert::TryInto;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PieceType {
     InitKing,
     King,
@@ -13,7 +16,7 @@ pub enum PieceType {
     Pawn,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Player {
     Black,
     White,
@@ -33,11 +36,89 @@ pub struct BoardState {
     pub fields: [Option<(PieceType, Player)>; 64],
     pub en_passant_field: EnPassantFieldInfo,
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EnPassantFieldInfo {
     pub ply: usize,
     pub skipped: usize,
     pub target: usize,
+}
+
+impl Serialize for BoardState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("BoardState", 2)?;
+        state.serialize_field("fields", &self.fields[..])?;
+        state.serialize_field("en_passant_field", &self.en_passant_field)?;
+        state.end()
+    }
+}
+impl<'de> Deserialize<'de> for BoardState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        //    #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            #[serde(rename = "fields")]
+            Fields,
+            #[serde(rename = "en_passant_field")]
+            EnPassantField
+        }
+        struct BoardStateVisitor;
+        impl<'de> Visitor<'de> for BoardStateVisitor {
+            type Value = BoardState;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct BoardState")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<BoardState, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let fields_slice: Vec<Option<(PieceType, Player)>> = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let en_passant_field = seq.next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let fields: [_; 64] = (*fields_slice).try_into().map_err(|_| de::Error::invalid_length(fields_slice.len(), &"64 fields"))?;
+                Ok(BoardState { fields, en_passant_field })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<BoardState, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut fields_vec: Option<Vec<Option<(PieceType, Player)>>> = None;
+                let mut en_passant_field = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Fields => {
+                            if fields_vec.is_some() {
+                                return Err(de::Error::duplicate_field("fields"));
+                            }
+                            fields_vec = Some(map.next_value()?);
+                        }
+                        Field::EnPassantField => {
+                            if en_passant_field.is_some() {
+                                return Err(de::Error::duplicate_field("en_passant_field"));
+                            }
+                            en_passant_field = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let fields_vec = fields_vec.ok_or_else(|| de::Error::missing_field("fields"))?;
+                let en_passant_field = en_passant_field.ok_or_else(|| de::Error::missing_field("en_passant_field"))?;
+                let fields: [_; 64] = (*fields_vec).try_into().map_err(|_| de::Error::invalid_length(fields_vec.len(), &"64 fields"))?;
+                Ok(BoardState { fields, en_passant_field })
+            }
+        }
+
+        const FIELDS: &'static [&'static str] = &["fields", "en_passant_field"];
+        deserializer.deserialize_struct("Duration", FIELDS, BoardStateVisitor)
+    }
 }
 
 impl BoardState {
@@ -270,7 +351,7 @@ fn get_pawn_moves(player: Player) -> (usize, &'static [Direction], &'static [Dir
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GameState {
     pub ply: usize,
     pub fifty_move_rule_last_event: usize,
