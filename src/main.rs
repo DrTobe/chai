@@ -10,6 +10,9 @@ pub mod board_view;
 pub mod game;
 pub mod minimax;
 pub mod ui;
+mod util;
+
+use util::ms;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     serde_test();
@@ -86,7 +89,7 @@ pub fn autoplay() -> Result<(), Box<dyn std::error::Error>> {
             let new_states = minimax_res.1;
             let minimax_nodes = minimax_res.2;
             if new_states.len() > 0 {
-                game = choose(new_states).unwrap();
+                game = util::choose(new_states).unwrap();
                 ctui.terminal().draw(|f| {
                     let size = ui::center(f.size(), 30, 12);
                     let chunks = ui::layout_vertical(
@@ -186,7 +189,7 @@ pub fn play_as(human: game::Player) -> Result<(), Box<dyn std::error::Error>> {
                 while start.elapsed() < ms(1000) {
                     std::thread::sleep(ms(100));
                 }
-                choose(new_states).unwrap()
+                util::choose(new_states).unwrap()
             };
         } else {
             if game.fifty_move_rule_draw() {
@@ -287,12 +290,4 @@ fn get_new_state_from_user(
             }
         }
     }
-}
-
-pub fn ms(millis: u64) -> time::Duration {
-    time::Duration::from_millis(millis)
-}
-
-pub fn choose<T: Copy>(s: Vec<T>) -> Option<T> {
-    s.choose(&mut rand::thread_rng()).map(|x| *x)
 }

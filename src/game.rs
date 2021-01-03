@@ -1,7 +1,7 @@
 use std::ops;
 use serde::{Serialize, Deserialize, ser::SerializeStruct, de, de::Deserializer, de::Visitor, de::SeqAccess, de::MapAccess};
 use std::fmt;
-use std::convert::TryInto;
+use std::convert::{From, TryInto};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PieceType {
@@ -313,6 +313,16 @@ pub struct GameState {
     pub board: BoardState,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FinishedState {
+    Ongoing, // the player whose turn it is is guaranteed to have at least one legal move!
+    Stalemate,
+    ThreefoldRepetition, // TODO not implemented yet
+    FiftyMoveDraw,
+    WinWhite,
+    WinBlack,
+}
+
 impl GameState {
     pub fn turn(&self) -> Player {
         if self.ply % 2 == 0 {
@@ -354,6 +364,23 @@ impl GameState {
         states[2].1.board.fields[new_pos] = Some((PieceType::Bishop, self.turn()));
         states[3].1.board.fields[new_pos] = Some((PieceType::Knight, self.turn()));
         states
+    }
+
+    pub fn get_finished_state(&self) -> FinishedState {
+        if self.fifty_move_rule_draw() {
+            FinishedState::FiftyMoveDraw
+        } else if self.get_legal_moves().len() == 0 {
+            if self.board.king_in_check(self.turn()) {
+                match self.turn().opponent() {
+                    Player::White => FinishedState::WinWhite,
+                    Player::Black => FinishedState::WinBlack,
+                }
+            } else {
+                FinishedState::Stalemate
+            }
+        } else {
+            FinishedState::Ongoing
+        }
     }
 
     /*
@@ -558,5 +585,24 @@ impl GameState {
 
     pub fn fifty_move_rule_draw(&self) -> bool {
         self.ply - self.fifty_move_rule_last_event >= 150
+    }
+}
+
+// Helper type which is sent to and received from elm. In Rust, it is easy
+// to determine (synchronously) if a game is finished. In elm, this is
+// harder since all communication to wasm happens via ports which are 
+// asynchronous.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AnnotatedGameState {
+    #[serde(flatten)]
+    pub game: GameState,
+    pub finished: FinishedState,
+}
+impl From<GameState> for AnnotatedGameState {
+    fn from(game: GameState) -> Self {
+        AnnotatedGameState {
+            game,
+            finished: game.get_finished_state(),
+        }
     }
 }
