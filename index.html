@@ -7,34 +7,103 @@
   <script type="text/javascript" src="elmain.js"></script>
 </head>
 
+
 <body>
     <div id="myapp"></div>
 </body>
 
-<script type="text/javascript">
 
-// Start the Elm application.
-var app = Elm.Main.init({
-    node: document.getElementById('myapp')
-});
+<!--
+The wasm initialization code as found in
+https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
+-->
+<!-- Note the usage of `type=module` here as this is an ES6 module -->
+<script type="module">
+  // Use ES module import syntax to import functionality from the module
+  // that we have compiled.
+  //
+  // Note that the `default` import is an initialization function which
+  // will "boot" the module and make it ready to use. Currently browsers
+  // don't support natively imported WebAssembly as an ES module, but
+  // eventually the manual initialization won't be required!
+  import init,
+    { add
+    , new_game
+    , get_legal_moves_for_single_piece
+    , get_minimax_move
+    } from './wasm/chai.js';
 
-// Create your WebSocket.
-var socket = new WebSocket('wss://echo.websocket.org');
+  async function run() {
+    // First up we need to actually load the wasm file, so we use the
+    // default export to inform it where the wasm file is located on the
+    // server, and then we wait on the returned promise to wait for the
+    // wasm to be loaded.
+    //
+    // It may look like this: `await init('./pkg/without_a_bundler_bg.wasm');`,
+    // but there is also a handy default inside `init` function, which uses
+    // `import.meta` to locate the wasm file relatively to js file.
+    //
+    // Note that instead of a string you can also pass in any of the
+    // following things:
+    //
+    // * `WebAssembly.Module`
+    //
+    // * `ArrayBuffer`
+    //
+    // * `Response`
+    //
+    // * `Promise` which returns any of the above, e.g. `fetch("./path/to/wasm")`
+    //
+    // This gives you complete control over how the module is loaded
+    // and compiled.
+    //
+    // Also note that the promise, when resolved, yields the wasm module's
+    // exports which is the same as importing the `*_bg` module in other
+    // modes
+    await init();
 
-// When a command goes to the `sendMessage` port, we pass the message
-// along to the WebSocket.
-app.ports.sendMessage.subscribe(function(message) {
-    socket.send(message);
-});
+    // And afterwards we can use all the functionality defined in wasm.
+    const result = add(1, 2);
+    console.log(`1 + 2 = ${result}`);
+    if (result !== 3)
+      throw new Error("wasm addition doesn't work!");
 
-// When a message comes into our WebSocket, we pass the message along
-// to the `messageReceiver` port.
-socket.addEventListener("message", function(event) {
-    app.ports.messageReceiver.send(event.data);
-});
+    let game = new_game();
+    console.log(`new_game() = ${game}`);
 
-// If you want to use a JavaScript library to manage your WebSocket
-// connection, replace the code in JS with the alternate implementation.
+    const move_options = get_legal_moves_for_single_piece(game, 8);
+    console.log(`get_legal_moves_for...() = ${move_options}`);
+
+    for (let i = 0; i < 10; i++) {
+      game = get_minimax_move(game);
+      console.log(`minimax_move: ${game}`);
+    }
+
+    // Start the Elm application and setup the connections between elm and wasm
+    // Start the Elm application.
+    var app = Elm.Main.init({
+      node: document.getElementById('myapp')
+    });
+
+
+    // Create your WebSocket.
+    var socket = new WebSocket('wss://echo.websocket.org');
+
+    // When a command goes to the `sendMessage` port, we pass the message
+    // along to the WebSocket.
+    app.ports.sendMessage.subscribe(function(message) {
+      socket.send(message);
+    });
+
+    // When a message comes into our WebSocket, we pass the message along
+    // to the `messageReceiver` port.
+    socket.addEventListener("message", function(event) {
+      app.ports.messageReceiver.send(event.data);
+    });
+  }
+
+  run();
+
 </script>
 
 </html>
