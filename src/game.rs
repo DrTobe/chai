@@ -43,15 +43,23 @@ pub struct EnPassantFieldInfo {
     pub target: usize,
 }
 
+// Serde is not able to derive for [T; 64] which is part of BoardState. Thus,
+// for serde, we use a proxy object which proxies [T; 64] through a Vec.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerdeBoardState {
+    fields: Vec<Option<(PieceType, Player)>>,
+    en_passant_field: EnPassantFieldInfo,
+}
 impl Serialize for BoardState {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("BoardState", 2)?;
-        state.serialize_field("fields", &self.fields[..])?;
-        state.serialize_field("en_passant_field", &self.en_passant_field)?;
-        state.end()
+        let sbs = SerdeBoardState {
+            fields: Vec::from(&self.fields[..]),
+            en_passant_field: self.en_passant_field,
+        };
+        sbs.serialize(serializer)
     }
 }
 impl<'de> Deserialize<'de> for BoardState {
@@ -59,65 +67,12 @@ impl<'de> Deserialize<'de> for BoardState {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        //    #[serde(field_identifier, rename_all = "lowercase")]
-        enum Field {
-            #[serde(rename = "fields")]
-            Fields,
-            #[serde(rename = "en_passant_field")]
-            EnPassantField
-        }
-        struct BoardStateVisitor;
-        impl<'de> Visitor<'de> for BoardStateVisitor {
-            type Value = BoardState;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct BoardState")
-            }
-
-            fn visit_seq<V>(self, mut seq: V) -> Result<BoardState, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let fields_slice: Vec<Option<(PieceType, Player)>> = seq.next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                let en_passant_field = seq.next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(1, &self))?;
-                let fields: [_; 64] = (*fields_slice).try_into().map_err(|_| de::Error::invalid_length(fields_slice.len(), &"64 fields"))?;
-                Ok(BoardState { fields, en_passant_field })
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<BoardState, V::Error>
-            where
-                V: MapAccess<'de>,
-            {
-                let mut fields_vec: Option<Vec<Option<(PieceType, Player)>>> = None;
-                let mut en_passant_field = None;
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Fields => {
-                            if fields_vec.is_some() {
-                                return Err(de::Error::duplicate_field("fields"));
-                            }
-                            fields_vec = Some(map.next_value()?);
-                        }
-                        Field::EnPassantField => {
-                            if en_passant_field.is_some() {
-                                return Err(de::Error::duplicate_field("en_passant_field"));
-                            }
-                            en_passant_field = Some(map.next_value()?);
-                        }
-                    }
-                }
-                let fields_vec = fields_vec.ok_or_else(|| de::Error::missing_field("fields"))?;
-                let en_passant_field = en_passant_field.ok_or_else(|| de::Error::missing_field("en_passant_field"))?;
-                let fields: [_; 64] = (*fields_vec).try_into().map_err(|_| de::Error::invalid_length(fields_vec.len(), &"64 fields"))?;
-                Ok(BoardState { fields, en_passant_field })
-            }
-        }
-
-        const FIELDS: &'static [&'static str] = &["fields", "en_passant_field"];
-        deserializer.deserialize_struct("Duration", FIELDS, BoardStateVisitor)
+        let sbs = SerdeBoardState::deserialize(deserializer)?;
+        let fields: [_; 64] = (*sbs.fields).try_into().map_err(|_| de::Error::invalid_length(sbs.fields.len(), &"64 fields"))?;
+        Ok(BoardState {
+            fields,
+            en_passant_field: sbs.en_passant_field,
+        })
     }
 }
 
