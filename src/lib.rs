@@ -25,11 +25,6 @@ mod minimax;
 mod util;
 
 #[wasm_bindgen]
-pub fn add(a: u32, b: u32) -> u32 {
-    a + b
-}
-
-#[wasm_bindgen]
 pub fn new_game() -> String {
     console_error_panic_hook::set_once();
     let board = game::BoardState::new();
