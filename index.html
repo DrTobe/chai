@@ -74,17 +74,27 @@ https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
     const move_options = get_legal_moves_for_single_piece(game, 8);
     console.log(`get_legal_moves_for...() = ${move_options}`);
 
-    for (let i = 0; i < 10; i++) {
-      game = get_minimax_move(game);
-      console.log(`minimax_move: ${game}`);
-    }
-
     // Start the Elm application and setup the connections between elm and wasm
     // Start the Elm application.
     var app = Elm.Main.init({
       node: document.getElementById('myapp')
     });
 
+    app.ports.gamestateReceiver.send(game);
+    app.ports.requestMinimax.subscribe((game) => {
+      let new_state = get_minimax_move(game);
+      app.ports.gamestateReceiver.send(new_state);
+    });
+
+    /*
+    for (let i = 0; i < 10; i++) {
+      setTimeout(() => {
+        game = get_minimax_move(game);
+        console.log(`minimax_move: ${game}`);
+        app.ports.gamestateReceiver.send(game);
+      }, 1000*i);
+    }
+    */
 
     // Create your WebSocket.
     var socket = new WebSocket('wss://echo.websocket.org');
