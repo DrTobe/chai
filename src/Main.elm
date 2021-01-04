@@ -6,6 +6,7 @@ import Html.Attributes --exposing (..)
 import Html.Events --exposing (..)
 import Json.Decode as D
 import Json.Encode as E
+import Time
 
 -- elm-ui
 import Element exposing (..)
@@ -47,15 +48,13 @@ port gamestateReceiver : (String -> msg) -> Sub msg
 
 
 type alias Model =
-  { draft : String
-  , messages : List String
-  , gamestate : Result D.Error GameState
+  { gamestate : Result D.Error GameState
   }
 
 
 init : () -> ( Model, Cmd Msg )
 init flags =
-  ( { draft = "", messages = [], gamestate = Ok newGame }
+  ( { gamestate = Ok newGame }
   , Cmd.none
   )
 
@@ -64,9 +63,7 @@ init flags =
 
 
 type Msg
-  = DraftChanged String
-  | Send
-  | RecvString String
+  = Tick
   | RecvGameState (Result D.Error GameState)
 
 
@@ -77,28 +74,18 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
   case msg of
-    DraftChanged draft ->
-      ( { model | draft = draft }
-      , Cmd.none
-      )
-
-    Send ->
-      ( { model | draft = "" }
-      , sendMessage model.draft
-      )
-
-    RecvString message ->
-      ( { model | messages = model.messages ++ [message] }
-      , Cmd.none
-      )
-
-    RecvGameState gamestate ->
-      ( { model | gamestate = gamestate }
-      , case gamestate of
+    Tick ->
+      ( model
+      , case model.gamestate of
           Ok gs -> case gs.finished of
             Ongoing -> requestMinimax <| E.encode 0 <| gameStateEncoder gs
             _ -> Cmd.none
           Err gs -> Cmd.none
+      )
+
+    RecvGameState gamestate ->
+      ( { model | gamestate = gamestate }
+      , Cmd.none
       )
 
 
@@ -113,7 +100,7 @@ update msg model =
 subscriptions : Model -> Sub Msg
 subscriptions _ =
   Sub.batch
-    [ messageReceiver RecvString
+    [ Time.every 1000 (\ignore -> Tick)
     , gamestateReceiver (\json -> D.decodeString gameStateDecoder json |> RecvGameState)
     ]
 
@@ -125,26 +112,13 @@ subscriptions _ =
 view : Model -> Html Msg
 view model =
   layout [] <|
-    column [] <|
-      [ el [ Region.heading 1 ] <| Element.text "Echo Chat"
-      ]
-      ++ List.map (\msg -> el [] (text <|  "- " ++ msg )) model.messages ++
-      [ Input.text [ onEnter Send ]
-          { onChange = DraftChanged
-          , text = model.draft
-          , placeholder =
-              Just
-                  (Input.placeholder []
-                      (text "type some text here and press enter")
-                  )
-          , label = Input.labelAbove [] (text "My Text Input")
-          }
-      , Input.button []
-          { onPress = Just Send
-          , label = text "Send"
-          }
-      , maybeBoardView model
-      ]
+    el [ width fill
+           , height fill
+           ] <|
+      el [ centerX
+         , centerY
+         ] <|
+        maybeBoardView model
 
 maybeBoardView : Model -> Element Msg
 maybeBoardView model =
