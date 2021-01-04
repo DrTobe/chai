@@ -15,10 +15,10 @@ mod util;
 use util::ms;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    serde_test();
+    //serde_test();
     //tui_test()?;
     //autoplay()?;
-    //play_as(game::Player::White)?;
+    play_as(game::Player::White)?;
 
     Ok(())
 }

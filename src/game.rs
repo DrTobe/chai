@@ -316,11 +316,10 @@ pub struct GameState {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FinishedState {
     Ongoing, // the player whose turn it is is guaranteed to have at least one legal move!
+    Checkmate,
     Stalemate,
     ThreefoldRepetition, // TODO not implemented yet
     FiftyMoveDraw,
-    WinWhite,
-    WinBlack,
 }
 
 impl GameState {
@@ -371,10 +370,7 @@ impl GameState {
             FinishedState::FiftyMoveDraw
         } else if self.get_legal_moves().len() == 0 {
             if self.board.king_in_check(self.turn()) {
-                match self.turn().opponent() {
-                    Player::White => FinishedState::WinWhite,
-                    Player::Black => FinishedState::WinBlack,
-                }
+                FinishedState::Checkmate
             } else {
                 FinishedState::Stalemate
             }
