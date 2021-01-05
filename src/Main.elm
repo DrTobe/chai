@@ -1,6 +1,7 @@
 port module Main exposing (..)
 
 import Browser
+import Browser.Events
 import Html exposing (Html)
 import Html.Attributes --exposing (..)
 import Html.Events --exposing (..)
@@ -21,7 +22,7 @@ import Element.Region as Region
 -- MAIN
 
 
-main : Program () Model Msg
+main : Program (Int, Int) Model Msg
 main =
   Browser.element
     { init = init
@@ -36,11 +37,11 @@ main =
 -- PORTS
 
 
-port sendMessage : String -> Cmd msg
-port messageReceiver : (String -> msg) -> Sub msg
-
+port requestNewgame : () -> Cmd msg
+port requestValidmoves : (String, Int) -> Cmd msg
 port requestMinimax : String -> Cmd msg
 port gamestateReceiver : (String -> msg) -> Sub msg
+port validmovesReceiver : (String -> msg) -> Sub msg
 
 
 
@@ -48,13 +49,29 @@ port gamestateReceiver : (String -> msg) -> Sub msg
 
 
 type alias Model =
-  { gamestate : Result D.Error GameState
+  { gamestate : GameState
+  , selectedField : Maybe Int
+  , validmoves : List PotentialMove -- empty if not requested yet
+  , windowSize : (Int, Int)
+  , error : Maybe String
   }
 
 
-init : () -> ( Model, Cmd Msg )
-init flags =
-  ( { gamestate = Ok newGame }
+init : (Int, Int) -> ( Model, Cmd Msg )
+init windowSizeFlags =
+      {-
+  let
+      json = """[[21, {"ply": 0, "fifty_move_rule_last_event": 0, "board": {"fields": [], "en_passant_field": {"ply": 0, "skipped": 0, "target": 0}}, "finished": "Ongoing"}]]"""
+      _ = Debug.log "json" json
+      _ = Debug.log "decode" <| D.decodeString potentialMovesDecoder json
+  in
+      -}
+  ( { gamestate = newGame
+    , selectedField = Nothing
+    , validmoves = []
+    , windowSize = windowSizeFlags
+    , error = Nothing
+    }
   , Cmd.none
   )
 
@@ -64,44 +81,92 @@ init flags =
 
 type Msg
   = Tick
+  | GotNewWindowSize Int Int
+  | Click Int
   | RecvGameState (Result D.Error GameState)
+  | RecvValidmoves (Result D.Error (List PotentialMove))
 
 
--- Use the `sendMessage` port when someone presses ENTER or clicks
--- the "Send" button. Check out index.html to see the corresponding
--- JS where this is piped into a WebSocket.
---
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
   case msg of
+    Click field ->
+      case List.filterMap (\potMove -> if potMove.new_field == field then Just potMove.new_state else Nothing) model.validmoves |> List.head of
+        Just newState -> 
+          ( { model | gamestate = newState
+                    , selectedField = Nothing
+                    , validmoves = []
+            }
+          , Cmd.none
+          )
+        Nothing -> 
+          case getAtOr model.gamestate.board.fields field Nothing of
+            Just { player } ->
+              if player == White && turn model.gamestate == White
+                then ( { model | selectedField = Just field }
+                     , requestValidmoves ((E.encode 0 <| gameStateEncoder model.gamestate), field)
+                     )
+                else ( { model | selectedField = Nothing, validmoves = [] }
+                     , Cmd.none
+                     )
+            Nothing ->
+              ( { model | selectedField = Nothing, validmoves = [] }
+              , Cmd.none
+              )
+
     Tick ->
       ( model
-      , case model.gamestate of
-          Ok gs -> case gs.finished of
-            Ongoing -> requestMinimax <| E.encode 0 <| gameStateEncoder gs
-            _ -> Cmd.none
-          Err gs -> Cmd.none
+      , case model.gamestate.finished of
+          Ongoing -> case turn model.gamestate of
+            Black -> requestMinimax <| E.encode 0 <| gameStateEncoder model.gamestate
+            White -> Cmd.none
+          _ -> Cmd.none
       )
 
     RecvGameState gamestate ->
-      ( { model | gamestate = gamestate }
+      ( { model | gamestate = Result.withDefault newGame gamestate
+                , error = updateError model gamestate 
+                                  "Could not decode game state from JSON."
+        }
       , Cmd.none
       )
 
+    RecvValidmoves validmoves ->
+      ( { model | validmoves = Result.withDefault [] validmoves
+                , error = updateError model validmoves
+                                  "Could not decode valid moves from JSON."
+        }
+      , Cmd.none
+      )
 
+    GotNewWindowSize width height ->
+      ( { model | windowSize = (width, height)
+        }
+      , Cmd.none
+      )
+
+updateError : Model -> (Result D.Error x) -> String -> Maybe String
+updateError model decodeResult errMsg =
+  case decodeResult of
+    Ok _ -> model.error
+    Err decodeError -> Just <| errMsg ++ "\n\n" ++ D.errorToString decodeError
+
+getAt : List a -> Int -> Maybe a
+getAt lst index = List.head <| List.drop index lst
+
+getAtOr : List a -> Int -> a -> a
+getAtOr lst index default = Maybe.withDefault default <| getAt lst index
 
 -- SUBSCRIPTIONS
 
 
--- Subscribe to the `messageReceiver` port to hear about messages coming in
--- from JS. Check out the index.html file to see how this is hooked up to a
--- WebSocket.
---
 subscriptions : Model -> Sub Msg
 subscriptions _ =
   Sub.batch
     [ Time.every 1000 (\ignore -> Tick)
+    , Browser.Events.onResize GotNewWindowSize
     , gamestateReceiver (\json -> D.decodeString gameStateDecoder json |> RecvGameState)
+    , validmovesReceiver (\json -> D.decodeString potentialMovesDecoder json |> RecvValidmoves)
     ]
 
 
@@ -111,38 +176,44 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-  layout [] <|
-    el [ width fill
-           , height fill
-           ] <|
-      el [ centerX
-         , centerY
-         ] <|
-        maybeBoardView model
+  let
+      highlightedFields =  List.map (\move -> move.new_field) model.validmoves
+                        ++ case model.selectedField of
+                              Just field -> [ field ]
+                              Nothing -> []
+  in
+    layout [] <|
+      column [ width fill
+             , height fill
+             ] <|
+        [ el [ centerX
+             , centerY
+             ] <|
+            boardView (boardSize model) model.gamestate.board highlightedFields Click
+        , case model.error of
+            Just errMsg -> text errMsg
+            Nothing -> none
+        , text <| String.fromInt (Tuple.first model.windowSize) ++ "x" ++ String.fromInt (Tuple.second model.windowSize)
+        , text (Debug.toString <| classifyDevice { width = Tuple.first model.windowSize, height = Tuple.second model.windowSize })
+        ]
 
-maybeBoardView : Model -> Element Msg
-maybeBoardView model =
-  case model.gamestate of
-    Ok gamestate -> boardView gamestate.board
-    Err jsonDecErr -> text <| D.errorToString jsonDecErr
-
--- DETECT ENTER
-
-onEnter : msg -> Element.Attribute msg
-onEnter msg =
-    Element.htmlAttribute
-        (Html.Events.on "keyup"
-            (D.field "key" D.string
-                |> D.andThen
-                    (\key ->
-                        if key == "Enter" then
-                            D.succeed msg
-
-                        else
-                            D.fail "Not the enter key"
-                    )
-            )
-        )
+boardSize : Model -> Int
+boardSize model =
+  let
+      size = model.windowSize
+      width = Tuple.first size
+      height = Tuple.second size
+      device = classifyDevice { width = width, height = height }
+      --_ = Debug.log "device" device
+  in
+      {-
+      case device.class of
+        Phone -> min width height - 50
+        Tablet -> min width height - 50
+        Desktop -> min 400 <| min width height
+        BigDesktop -> min 600 <| min width height
+      -}
+      min (width-20) <| min (height-60) 400
 
 -- CHESS Model
 
@@ -227,6 +298,10 @@ newGame =
   , finished = Ongoing
   }
 
+turn : GameState -> Player
+turn game =
+  if modBy 2 game.ply == 1 then Black else White
+
 -- CHESS serde
 
 potentialMovesDecoder : D.Decoder (List PotentialMove)
@@ -236,8 +311,8 @@ potentialMovesDecoder =
 potentialMoveDecoder : D.Decoder PotentialMove
 potentialMoveDecoder =
   D.map2 PotentialMove
-    D.int
-    gameStateDecoder
+    (D.index 0 D.int)
+    (D.index 1 gameStateDecoder)
 
 gameStateDecoder : D.Decoder GameState
 gameStateDecoder =
@@ -384,22 +459,27 @@ finishedStateEncoder fin =
 
 -- CHESS view
 
-boardView : BoardState -> Element Msg
-boardView board =
+boardView : Int -> BoardState -> List Int -> (Int -> Msg) -> Element Msg
+boardView size board highlightedFields msg =
   let
       subfields = \rowNum -> List.take 8 <| List.drop (rowNum*8) board.fields
-      subrow = \rowNum -> rowView rowNum <| subfields rowNum
+      subrow = \rowNum -> rowView size rowNum (subfields rowNum) highlightedFields msg
       sevenToZero = List.range 0 7 |> List.reverse
   in
       column [] <| List.map subrow sevenToZero
 
-rowView : Int -> List (Maybe OccupiedField) -> Element Msg
-rowView rowNum fields =
+rowView : Int -> Int -> List (Maybe OccupiedField) -> List Int -> (Int -> Msg) -> Element Msg
+rowView size rowNum fields highlightedFields msg =
   let
+      fieldSize = size // 8
+      fieldNum = \colNum -> rowNum * 8 + colNum
       isDarkField = \colNum -> modBy 2 (rowNum + colNum) == 0
-      fieldColor = \colNum -> case isDarkField colNum of
-        True -> rgb255 100 100 100
-        False -> rgb255 250 250 250
+      isHighlighted = \colNum -> List.member (fieldNum colNum) highlightedFields
+      fieldColor = \colNum -> case (isDarkField colNum, isHighlighted colNum) of
+        (True, False)-> rgb255 100 100 100
+        (False, False) -> rgb255 250 250 250
+        (True, True) -> rgb255 100 100 0
+        (False, True) -> rgb255 200 200 0
       pieceImgSrc = \ptp -> case (ptp.piece_type, ptp.player) of
         (InitKing, Black) -> "black_king.png"
         (King, Black) -> "black_king.png"
@@ -420,18 +500,18 @@ rowView rowNum fields =
         (InitPawn, White) -> "white_pawn.png"
         (Pawn, White) -> "white_pawn.png"
       pieceImg = \ptp ->
-        image [ width <| px 40
-              , height <| px 40
+        image [ width fill
+              , height fill
               ] { src = "piece-images/" ++ pieceImgSrc ptp
                 , description = pieceImgSrc ptp
                 }
       field = \colNum maybePtp ->
         el [ Background.color <| fieldColor colNum
-           , width <| px 40
-           , height <| px 40
+           , width <| px fieldSize
+           , height <| px fieldSize
+           , Events.onClick <| msg (rowNum*8 + colNum)
            ] <| case maybePtp of
              Just ptp -> pieceImg ptp
              Nothing -> none
-
   in
       row [] <| List.indexedMap field fields

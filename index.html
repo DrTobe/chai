@@ -3,6 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=0.86, maximum-scale=5.0, minimum-scale=0.86">
   <title>Elm + Websockets</title>
   <script type="text/javascript" src="elmain.js"></script>
 </head>
@@ -27,8 +28,7 @@ https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
   // don't support natively imported WebAssembly as an ES module, but
   // eventually the manual initialization won't be required!
   import init,
-    { add
-    , new_game
+    { new_game
     , get_legal_moves_for_single_piece
     , get_minimax_move
     } from './wasm/chai.js';
@@ -62,53 +62,25 @@ https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
     // modes
     await init();
 
-    // And afterwards we can use all the functionality defined in wasm.
-    const result = add(1, 2);
-    console.log(`1 + 2 = ${result}`);
-    if (result !== 3)
-      throw new Error("wasm addition doesn't work!");
-
-    let game = new_game();
-    console.log(`new_game() = ${game}`);
-
-    const move_options = get_legal_moves_for_single_piece(game, 8);
-    console.log(`get_legal_moves_for...() = ${move_options}`);
-
     // Start the Elm application and setup the connections between elm and wasm
     // Start the Elm application.
     var app = Elm.Main.init({
-      node: document.getElementById('myapp')
+      node: document.getElementById('myapp'),
+      flags: [window.innerWidth, window.innerHeight]
     });
 
-    app.ports.gamestateReceiver.send(game);
+    //let game = new_game();
+    // Not required, since elm initializes its game state itself
+    //app.ports.gamestateReceiver.send(game);
+
     app.ports.requestMinimax.subscribe((game) => {
       let new_state = get_minimax_move(game);
       app.ports.gamestateReceiver.send(new_state);
     });
 
-    /*
-    for (let i = 0; i < 10; i++) {
-      setTimeout(() => {
-        game = get_minimax_move(game);
-        console.log(`minimax_move: ${game}`);
-        app.ports.gamestateReceiver.send(game);
-      }, 1000*i);
-    }
-    */
-
-    // Create your WebSocket.
-    var socket = new WebSocket('wss://echo.websocket.org');
-
-    // When a command goes to the `sendMessage` port, we pass the message
-    // along to the WebSocket.
-    app.ports.sendMessage.subscribe(function(message) {
-      socket.send(message);
-    });
-
-    // When a message comes into our WebSocket, we pass the message along
-    // to the `messageReceiver` port.
-    socket.addEventListener("message", function(event) {
-      app.ports.messageReceiver.send(event.data);
+    app.ports.requestValidmoves.subscribe(([game, field]) => {
+      let validmoves = get_legal_moves_for_single_piece(game, field);
+      app.ports.validmovesReceiver.send(validmoves);
     });
   }
 
