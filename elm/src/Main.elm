@@ -340,12 +340,12 @@ logos =
       [ el [ width <| px 40 ] <| ElmLogo.element 40
       , image [ width <| px 40
               ]
-              { src = "logos/rust-logo-blk.svg"
+              { src = "web/logos/rust-logo-blk.svg"
               , description = "The Rust Programming Language Logo"
               }
       , image [ width <| px 40
               ]
-              { src = "logos/WebAssembly_Logo.svg"
+              { src = "web/logos/WebAssembly_Logo.svg"
               , description = "The WebAssembly Logo"
               }
       ]
@@ -637,7 +637,7 @@ rowView size rowNum fields highlightedFields msg =
       pieceImg = \ptp ->
         image [ width fill
               , height fill
-              ] { src = "piece-images/" ++ pieceImgSrc ptp
+              ] { src = "web/piece-images/" ++ pieceImgSrc ptp
                 , description = pieceImgSrc ptp
                 }
       field = \colNum maybePtp ->

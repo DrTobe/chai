@@ -12189,7 +12189,7 @@ var $author$project$Main$rowView = F5(
 					]),
 				{
 					aI: pieceImgSrc(ptp),
-					aX: 'piece-images/' + pieceImgSrc(ptp)
+					aX: 'web/piece-images/' + pieceImgSrc(ptp)
 				});
 		};
 		var isDarkField = function (colNum) {
@@ -13346,7 +13346,7 @@ var $author$project$Main$logos = A2(
 					$mdgriffith$elm_ui$Element$width(
 					$mdgriffith$elm_ui$Element$px(40))
 				]),
-			{aI: 'The Rust Programming Language Logo', aX: 'logos/rust-logo-blk.svg'}),
+			{aI: 'The Rust Programming Language Logo', aX: 'web/logos/rust-logo-blk.svg'}),
 			A2(
 			$mdgriffith$elm_ui$Element$image,
 			_List_fromArray(
@@ -13354,7 +13354,7 @@ var $author$project$Main$logos = A2(
 					$mdgriffith$elm_ui$Element$width(
 					$mdgriffith$elm_ui$Element$px(40))
 				]),
-			{aI: 'The WebAssembly Logo', aX: 'logos/WebAssembly_Logo.svg'})
+			{aI: 'The WebAssembly Logo', aX: 'web/logos/WebAssembly_Logo.svg'})
 		]));
 var $author$project$Main$winMessage = function (model) {
 	var gs = model.k;
