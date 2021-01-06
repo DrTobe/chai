@@ -29,3 +29,10 @@ tui = { version = "0.13", default-features = false, features = ['crossterm'], op
 # wasm-pack bug: https://stackoverflow.com/a/64507864
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-Oz", "--enable-mutable-globals"]
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ["-Oz", "--enable-mutable-globals", "-g"]
+
+[profile.release]
+lto = true
+opt-level = 's' # only meaningful for wasm on the web, split in several crates?
