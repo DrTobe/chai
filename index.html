@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=0.86, maximum-scale=5.0, minimum-scale=0.86">
   <title>Chai - A Chess AI</title>
-  <script type="text/javascript" src="elmain.js"></script>
+  <script type="text/javascript" src="./web/build/elm.min.js"></script>
 </head>
 
 
@@ -31,7 +31,7 @@ https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
     { new_game
     , get_legal_moves_for_single_piece
     , get_minimax_move
-    } from './wasm/chai.js';
+    } from './web/build/chai.js';
 
   async function run() {
     // First up we need to actually load the wasm file, so we use the

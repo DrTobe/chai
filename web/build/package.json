@@ -1,0 +1,15 @@
+{
+  "name": "chai",
+  "collaborators": [
+    "Tobbe <tobias.naumann@iml.fraunhofer.de>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "chai_bg.wasm",
+    "chai.js",
+    "chai.d.ts"
+  ],
+  "module": "chai.js",
+  "types": "chai.d.ts",
+  "sideEffects": false
+}

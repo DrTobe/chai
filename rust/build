@@ -1,0 +1,12 @@
+#!/usr/bin/bash
+
+set -e
+
+wasm-pack build --target web
+cp pkg/* ../web/build/
+
+wasm="../web/build/chai_bg.wasm"
+
+echo ""
+echo "Size: $(cat $wasm | wc -c) bytes"
+echo "Gzipped: $(cat $wasm | gzip -c | wc -c) bytes"
