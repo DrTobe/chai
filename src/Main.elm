@@ -17,6 +17,7 @@ import Element.Events as Events
 import Element.Font as Font
 import Element.Input as Input
 import Element.Region as Region
+import ElmLogo
 
 
 -- MAIN
@@ -94,21 +95,27 @@ type Msg
   | Click Int
   | RecvGameState (Result D.Error GameState)
   | RecvValidmoves (Result D.Error (List PotentialMove))
+  | Restart
   | PlayHuman
-  | HelpRequested
   | PlayAI
+  | HelpRequested
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
   case msg of
+    Restart ->
+      ( initModel model.playmode model.windowSize
+      , Cmd.none
+      )
+
     PlayHuman ->
-      ( initModel HumanVsAI model.windowSize
+      ( { model | playmode = HumanVsAI }
       , Cmd.none
       )
 
     PlayAI ->
-      ( initModel AIvsAI model.windowSize
+      ( { model | playmode = AIvsAI }
       , Cmd.none
       )
 
@@ -223,15 +230,22 @@ view model =
       el [ width fill
          , height fill
          ] <|
-        column [ centerX
-               , centerY
+        column [ width fill
+               , height fill
                ]
-          [ buttons model
-          , boardView (boardSize model) model.gamestate.board highlightedFields Click
-          , winMessage model
-          , errorMessage model
-          --, text <| String.fromInt (Tuple.first model.windowSize) ++ "x" ++ String.fromInt (Tuple.second model.windowSize)
-          --, text (Debug.toString <| classifyDevice { width = Tuple.first model.windowSize, height = Tuple.second model.windowSize })
+          [ column [ centerX
+                   , centerY
+                   ]
+              [ buttons model
+              , boardView (boardSize model) model.gamestate.board highlightedFields Click
+              , winMessage model
+              , errorMessage model
+              --, text <| String.fromInt (Tuple.first model.windowSize) ++ "x" ++ String.fromInt (Tuple.second model.windowSize)
+              --, text (Debug.toString <| classifyDevice { width = Tuple.first model.windowSize, height = Tuple.second model.windowSize })
+              ]
+          , el [ centerX
+               , width <| px (boardSize model)
+               ] logos
           ]
 
 boardSize : Model -> Int
@@ -258,9 +272,11 @@ buttons model =
       , paddingXY 0 40
       , spacing 5
       ]
-      [ button "Play (Restart)" PlayHuman
-      , button "Help me out!" HelpRequested
-      , button "Beat yourself!" PlayAI
+      [ button "Restart" Restart
+      --, button "Help!" HelpRequested
+      , if model.playmode == AIvsAI
+          then button "Take Control" PlayHuman
+          else button "Just Watch" PlayAI
       ]
 
 button : String -> Msg -> Element Msg
@@ -314,6 +330,25 @@ errorMessage model =
              [ el [ Font.bold, Font.size 24 ] <| text "Error:"
              , text errMsg
              ]
+
+logos : Element Msg
+logos =
+  row [ centerX
+      , spacing 20
+      , paddingXY 0 10
+      ]
+      [ el [ width <| px 40 ] <| ElmLogo.element 40
+      , image [ width <| px 40
+              ]
+              { src = "logos/rust-logo-blk.svg"
+              , description = "The Rust Programming Language Logo"
+              }
+      , image [ width <| px 40
+              ]
+              { src = "logos/WebAssembly_Logo.svg"
+              , description = "The WebAssembly Logo"
+              }
+      ]
 
 -- CHESS Model
 

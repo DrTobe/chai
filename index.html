@@ -69,7 +69,7 @@ https://rustwasm.github.io/docs/wasm-bindgen/examples/without-a-bundler.html
       flags: [window.innerWidth, window.innerHeight]
     });
 
-    //let game = new_game();
+    let game = new_game(); // also sets console_error_panic_hook in Rust
     // Not required, since elm initializes its game state itself
     //app.ports.gamestateReceiver.send(game);
 
