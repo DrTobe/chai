@@ -1,3 +1,4 @@
-/target
-elm-stuff/
-elmain.js
+rust/Cargo.lock
+rust/target
+rust/pkg
+elm/elm-stuff/
