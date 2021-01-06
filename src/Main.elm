@@ -47,9 +47,13 @@ port validmovesReceiver : (String -> msg) -> Sub msg
 
 -- MODEL
 
+type PlayMode
+  = HumanVsAI
+  | AIvsAI
 
 type alias Model =
-  { gamestate : GameState
+  { playmode : PlayMode
+  , gamestate : GameState
   , selectedField : Maybe Int
   , validmoves : List PotentialMove -- empty if not requested yet
   , windowSize : (Int, Int)
@@ -66,14 +70,19 @@ init windowSizeFlags =
       _ = Debug.log "decode" <| D.decodeString potentialMovesDecoder json
   in
       -}
-  ( { gamestate = newGame
-    , selectedField = Nothing
-    , validmoves = []
-    , windowSize = windowSizeFlags
-    , error = Nothing
-    }
+  ( initModel HumanVsAI windowSizeFlags
   , Cmd.none
   )
+
+initModel : PlayMode -> (Int, Int) -> Model
+initModel playmode windowSize =
+  { playmode = playmode
+  , gamestate = newGame
+  , selectedField = Nothing
+  , validmoves = []
+  , windowSize = windowSize
+  , error = Nothing
+  }
 
 
 -- UPDATE
@@ -85,11 +94,31 @@ type Msg
   | Click Int
   | RecvGameState (Result D.Error GameState)
   | RecvValidmoves (Result D.Error (List PotentialMove))
+  | PlayHuman
+  | HelpRequested
+  | PlayAI
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
   case msg of
+    PlayHuman ->
+      ( initModel HumanVsAI model.windowSize
+      , Cmd.none
+      )
+
+    PlayAI ->
+      ( initModel AIvsAI model.windowSize
+      , Cmd.none
+      )
+
+    HelpRequested ->
+      ( model
+      , if turn model.gamestate == White && model.playmode == HumanVsAI
+          then createMinimaxRequest model
+          else Cmd.none
+      )
+
     Click field ->
       case List.filterMap (\potMove -> if potMove.new_field == field then Just potMove.new_state else Nothing) model.validmoves |> List.head of
         Just newState -> 
@@ -102,7 +131,9 @@ update msg model =
         Nothing -> 
           case getAtOr model.gamestate.board.fields field Nothing of
             Just { player } ->
-              if player == White && turn model.gamestate == White
+              if    player == White
+                 && turn model.gamestate == White
+                 && model.playmode == HumanVsAI
                 then ( { model | selectedField = Just field }
                      , requestValidmoves ((E.encode 0 <| gameStateEncoder model.gamestate), field)
                      )
@@ -117,14 +148,17 @@ update msg model =
     Tick ->
       ( model
       , case model.gamestate.finished of
-          Ongoing -> case turn model.gamestate of
-            Black -> requestMinimax <| E.encode 0 <| gameStateEncoder model.gamestate
-            White -> Cmd.none
+          Ongoing -> case (turn model.gamestate, model.playmode) of
+            (Black, _) -> createMinimaxRequest model
+            (White, AIvsAI) -> createMinimaxRequest model
+            _ -> Cmd.none
           _ -> Cmd.none
       )
 
     RecvGameState gamestate ->
       ( { model | gamestate = Result.withDefault newGame gamestate
+                , selectedField = Nothing
+                , validmoves = []
                 , error = updateError model gamestate 
                                   "Could not decode game state from JSON."
         }
@@ -150,6 +184,9 @@ updateError model decodeResult errMsg =
   case decodeResult of
     Ok _ -> model.error
     Err decodeError -> Just <| errMsg ++ "\n\n" ++ D.errorToString decodeError
+
+createMinimaxRequest model =
+  requestMinimax <| E.encode 0 <| gameStateEncoder model.gamestate
 
 getAt : List a -> Int -> Maybe a
 getAt lst index = List.head <| List.drop index lst
@@ -183,19 +220,19 @@ view model =
                               Nothing -> []
   in
     layout [] <|
-      column [ width fill
-             , height fill
-             ] <|
-        [ el [ centerX
-             , centerY
-             ] <|
-            boardView (boardSize model) model.gamestate.board highlightedFields Click
-        , case model.error of
-            Just errMsg -> text errMsg
-            Nothing -> none
-        , text <| String.fromInt (Tuple.first model.windowSize) ++ "x" ++ String.fromInt (Tuple.second model.windowSize)
-        , text (Debug.toString <| classifyDevice { width = Tuple.first model.windowSize, height = Tuple.second model.windowSize })
-        ]
+      el [ width fill
+         , height fill
+         ] <|
+        column [ centerX
+               , centerY
+               ]
+          [ buttons model
+          , boardView (boardSize model) model.gamestate.board highlightedFields Click
+          , winMessage model
+          , errorMessage model
+          --, text <| String.fromInt (Tuple.first model.windowSize) ++ "x" ++ String.fromInt (Tuple.second model.windowSize)
+          --, text (Debug.toString <| classifyDevice { width = Tuple.first model.windowSize, height = Tuple.second model.windowSize })
+          ]
 
 boardSize : Model -> Int
 boardSize model =
@@ -214,6 +251,69 @@ boardSize model =
         BigDesktop -> min 600 <| min width height
       -}
       min (width-20) <| min (height-60) 400
+
+buttons : Model -> Element Msg
+buttons model =
+  row [ width <| px (boardSize model)
+      , paddingXY 0 40
+      , spacing 5
+      ]
+      [ button "Play (Restart)" PlayHuman
+      , button "Help me out!" HelpRequested
+      , button "Beat yourself!" PlayAI
+      ]
+
+button : String -> Msg -> Element Msg
+button btntext msg =
+  Input.button
+    [ width fill
+    , padding 10
+    , Border.width 1
+    , Border.rounded 3
+    , mouseOver [ Border.shadow 
+                   { offset = (1,1)
+                   , size = 2
+                   , blur = 2
+                   , color = rgba 0 0 0 0.2
+                   }
+                ]
+    , focused []
+    ]
+    { onPress = Just msg
+    , label = el [ centerX ] <| text btntext
+    }
+
+winMessage : Model -> Element Msg
+winMessage model =
+  let
+      gs = model.gamestate
+      mover = playerEncoder <| turn gs
+      other = playerEncoder <| turn { gs | ply = gs.ply + 1 }
+  in
+    el [ width <| px (boardSize model)
+       , height <| px 50
+       ] <|
+       el [ centerX
+          , centerY
+          ] <|
+        case model.gamestate.finished of
+          Ongoing -> none
+          Checkmate -> text <| other ++ " wins!"
+          Stalemate -> text <| "Draw! " ++ mover ++ " can not move (Stalemate)."
+          ThreefoldRepetition -> text <| "Draw (threefold board repetition)."
+          FiftyMoveDraw -> text <| "Draw (fifty move rule)."
+
+errorMessage : Model -> Element Msg
+errorMessage model =
+  case model.error of
+    Nothing -> none
+    Just errMsg -> 
+      column [ width <| px (boardSize model)
+             , paddingXY 0 50
+             ]
+             [ el [ Font.bold, Font.size 24 ] <| text "Error:"
+             , text errMsg
+             ]
 
 -- CHESS Model
 
